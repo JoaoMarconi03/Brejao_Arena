@@ -1,0 +1,117 @@
+"use client"
+
+import { useState } from "react"
+import { signIn } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Eye, EyeOff, Trophy } from "lucide-react"
+
+export default function LoginPage() {
+  const router = useRouter()
+  const [email, setEmail] = useState("")
+  const [senha, setSenha] = useState("")
+  const [mostrarSenha, setMostrarSenha] = useState(false)
+  const [erro, setErro] = useState("")
+  const [carregando, setCarregando] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setErro("")
+    setCarregando(true)
+
+    const resultado = await signIn("credentials", {
+      email,
+      password: senha,
+      redirect: false,
+    })
+
+    setCarregando(false)
+
+    if (resultado?.error) {
+      setErro("Email ou senha inválidos.")
+      return
+    }
+
+    router.push("/dashboard")
+  }
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      {/* Background gradient */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background pointer-events-none" />
+
+      <div className="relative w-full max-w-sm">
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
+            <Trophy className="w-8 h-8 text-primary-foreground" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground">Brejão Arena</h1>
+          <p className="text-muted-foreground text-sm mt-1">Sistema de Gestão</p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-xl">
+          <p className="text-sm font-semibold text-foreground mb-5">Acesse sua conta</p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs text-muted-foreground">E-mail</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground focus:border-primary"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="senha" className="text-xs text-muted-foreground">Senha</Label>
+              <div className="relative">
+                <Input
+                  id="senha"
+                  type={mostrarSenha ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  required
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground pr-10 focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onClick={() => setMostrarSenha((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {mostrarSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {erro && (
+              <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg border border-destructive/20">
+                {erro}
+              </p>
+            )}
+
+            <Button
+              type="submit"
+              disabled={carregando}
+              className="w-full h-11 font-semibold shadow-lg shadow-primary/20"
+            >
+              {carregando ? "Entrando..." : "Entrar"}
+            </Button>
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-muted-foreground mt-5">
+          Acesso restrito a administradores e staff
+        </p>
+      </div>
+    </div>
+  )
+}

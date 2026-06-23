@@ -1,0 +1,206 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// MULTI-TENANT
+// ─────────────────────────────────────────────
+
+model Tenant {
+  id          String       @id @default(cuid())
+  nome        String
+  slug        String       @unique
+  criadoEm   DateTime     @default(now())
+  usuarios    Usuario[]
+  clientes    Cliente[]
+  quadras     Quadra[]
+  produtos    Produto[]
+  planos      Plano[]
+}
+
+// ─────────────────────────────────────────────
+// USUÁRIOS DO SISTEMA (quem opera)
+// ─────────────────────────────────────────────
+
+model Usuario {
+  id       String   @id @default(cuid())
+  nome     String
+  email    String   @unique
+  senha    String
+  role     Role     @default(STAFF)
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  cliente  Cliente?
+  criadoEm DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  CLIENTE
+}
+
+// ─────────────────────────────────────────────
+// CLIENTES (jogadores/frequentadores)
+// ─────────────────────────────────────────────
+
+model Cliente {
+  id           String        @id @default(cuid())
+  nome         String
+  telefone     String?
+  email        String?
+  usuarioId    String?       @unique
+  usuario      Usuario?      @relation(fields: [usuarioId], references: [id])
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  assinaturas  Assinatura[]
+  agendamentos Agendamento[]
+  conta        ContaFiado?
+  criadoEm     DateTime      @default(now())
+}
+
+// ─────────────────────────────────────────────
+// PLANOS MENSAIS
+// ─────────────────────────────────────────────
+
+model Plano {
+  id          String       @id @default(cuid())
+  nome        String
+  valor       Decimal      @db.Decimal(10, 2)
+  descricao   String?
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  assinaturas Assinatura[]
+  ativo       Boolean      @default(true)
+}
+
+model Assinatura {
+  id             String            @id @default(cuid())
+  clienteId      String
+  planoId        String
+  diaVencimento  Int
+  status         StatusAssinatura  @default(ATIVA)
+  inicio         DateTime
+  cliente        Cliente           @relation(fields: [clienteId], references: [id])
+  plano          Plano             @relation(fields: [planoId], references: [id])
+  pagamentos     PagamentoMensal[]
+  criadoEm       DateTime          @default(now())
+}
+
+model PagamentoMensal {
+  id           String     @id @default(cuid())
+  assinaturaId String
+  assinatura   Assinatura @relation(fields: [assinaturaId], references: [id])
+  valor        Decimal    @db.Decimal(10, 2)
+  mesReferencia DateTime
+  pago         Boolean    @default(false)
+  pagoEm       DateTime?
+  criadoEm     DateTime   @default(now())
+}
+
+enum StatusAssinatura {
+  ATIVA
+  SUSPENSA
+  CANCELADA
+}
+
+// ─────────────────────────────────────────────
+// QUADRAS
+// ─────────────────────────────────────────────
+
+model Quadra {
+  id           String        @id @default(cuid())
+  nome         String
+  descricao    String?
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  agendamentos Agendamento[]
+  ativa        Boolean       @default(true)
+}
+
+model Agendamento {
+  id         String            @id @default(cuid())
+  inicio     DateTime
+  fim        DateTime
+  status     StatusAgendamento @default(PENDENTE)
+  tipo       TipoAgendamento   @default(AVULSO)
+  valor      Decimal?          @db.Decimal(10, 2)
+  observacao String?
+  quadraId   String
+  clienteId  String?
+  quadra     Quadra            @relation(fields: [quadraId], references: [id])
+  cliente    Cliente?          @relation(fields: [clienteId], references: [id])
+  criadoEm   DateTime          @default(now())
+}
+
+enum StatusAgendamento {
+  PENDENTE
+  CONFIRMADO
+  CANCELADO
+  CONCLUIDO
+}
+
+enum TipoAgendamento {
+  AVULSO
+  MENSALISTA
+}
+
+// ─────────────────────────────────────────────
+// BAR — PRODUTOS
+// ─────────────────────────────────────────────
+
+model Produto {
+  id          String           @id @default(cuid())
+  nome        String
+  preco       Decimal          @db.Decimal(10, 2)
+  categoria   CategoriaProduto
+  tenantId    String
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  lancamentos LancamentoFiado[]
+  ativo       Boolean          @default(true)
+}
+
+enum CategoriaProduto {
+  BEBIDA
+  ALIMENTO
+  OUTRO
+}
+
+// ─────────────────────────────────────────────
+// CONTA FIADO (caderneta digital do cliente)
+// ─────────────────────────────────────────────
+
+model ContaFiado {
+  id             String            @id @default(cuid())
+  clienteId      String            @unique
+  cliente        Cliente           @relation(fields: [clienteId], references: [id])
+  diaFechamento  Int
+  lancamentos    LancamentoFiado[]
+  pagamentos     PagamentoFiado[]
+  criadoEm       DateTime          @default(now())
+}
+
+model LancamentoFiado {
+  id         String     @id @default(cuid())
+  contaId    String
+  conta      ContaFiado @relation(fields: [contaId], references: [id])
+  descricao  String
+  valor      Decimal    @db.Decimal(10, 2)
+  produtoId  String?
+  produto    Produto?   @relation(fields: [produtoId], references: [id])
+  criadoEm   DateTime   @default(now())
+}
+
+model PagamentoFiado {
+  id         String     @id @default(cuid())
+  contaId    String
+  conta      ContaFiado @relation(fields: [contaId], references: [id])
+  valor      Decimal    @db.Decimal(10, 2)
+  observacao String?
+  criadoEm   DateTime   @default(now())
+}
