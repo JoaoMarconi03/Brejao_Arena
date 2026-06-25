@@ -1,10 +1,13 @@
 import type { ReactNode } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { MobileHeader } from "@/components/dashboard/mobile-header"
+import { InactivityGuard } from "@/components/inactivity-guard"
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen overflow-hidden">
+      <InactivityGuard />
+
       {/* Sidebar — desktop only */}
       <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 lg:z-50">
         <Sidebar />

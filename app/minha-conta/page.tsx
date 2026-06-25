@@ -41,13 +41,29 @@ export default async function MinhaContaPage() {
 
   const agendamentos = cliente?.agendamentos ?? []
 
-  // Próximo jogo: futuro com status não cancelado
-  const agora = new Date()
-  const proximoJogo = agendamentos.find(
-    (a) => a.inicio > agora && a.status !== "CANCELADO"
-  )
+  // Busca horários como strings literais do banco (sem conversão de timezone)
+  const clienteId = cliente?.id
+  const horariosRaw = clienteId
+    ? await db.$queryRaw<Array<{ id: string; inicioHora: string; fimHora: string; inicioData: string }>>`
+        SELECT
+          id,
+          TO_CHAR(inicio, 'HH24:MI')   AS "inicioHora",
+          TO_CHAR(fim,    'HH24:MI')   AS "fimHora",
+          TO_CHAR(inicio, 'YYYY-MM-DD') AS "inicioData"
+        FROM "Agendamento"
+        WHERE "clienteId" = ${clienteId}
+      `
+    : []
 
-  // Contagem de agendamentos ativos (não cancelados)
+  const horariosMap = Object.fromEntries(horariosRaw.map((h) => [h.id, h]))
+
+  // Próximo jogo: compara apenas pela data (string "YYYY-MM-DD")
+  const hoje = new Date().toISOString().slice(0, 10)
+  const proximoJogo = agendamentos.find((a) => {
+    const h = horariosMap[a.id]
+    return h && h.inicioData >= hoje && a.status !== "CANCELADO"
+  })
+
   const totalAtivos = agendamentos.filter((a) => a.status !== "CANCELADO").length
 
   const iniciais = nome
@@ -57,23 +73,32 @@ export default async function MinhaContaPage() {
     .toUpperCase()
     .slice(0, 2)
 
-  function formatData(date: Date) {
-    return date.toLocaleDateString("pt-BR", {
+  function formatData(ag: (typeof agendamentos)[0]) {
+    const h = horariosMap[ag.id]
+    if (!h) return "—"
+    const [y, mo, d] = h.inicioData.split("-").map(Number)
+    return new Date(y, mo - 1, d).toLocaleDateString("pt-BR", {
       weekday: "short", day: "2-digit", month: "short", year: "numeric",
     })
   }
 
-  function formatHorario(inicio: Date, fim: Date) {
-    const h = (d: Date) => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    return `${h(inicio)} – ${h(fim)}`
+  function formatHorario(ag: (typeof agendamentos)[0]) {
+    const h = horariosMap[ag.id]
+    return h ? `${h.inicioHora} – ${h.fimHora}` : "—"
   }
 
-  function formatProximo(date: Date) {
-    return date.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" })
+  function formatProximo() {
+    if (!proximoJogo) return "—"
+    const h = horariosMap[proximoJogo.id]
+    if (!h) return "—"
+    const [y, mo, d] = h.inicioData.split("-").map(Number)
+    return new Date(y, mo - 1, d).toLocaleDateString("pt-BR", {
+      weekday: "short", day: "2-digit", month: "short",
+    })
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur">
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -115,7 +140,7 @@ export default async function MinhaContaPage() {
             </div>
             <p className="text-xs text-muted-foreground">Próximo jogo</p>
             <p className="text-lg font-bold mt-0.5">
-              {proximoJogo ? formatProximo(proximoJogo.inicio) : "—"}
+              {formatProximo()}
             </p>
           </div>
 
@@ -158,9 +183,9 @@ export default async function MinhaContaPage() {
                       <CalendarDays className="w-5 h-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium text-sm">{formatData(ag.inicio)}</p>
+                      <p className="font-medium text-sm">{formatData(ag)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatHorario(ag.inicio, ag.fim)} • {ag.quadra.nome}
+                        {formatHorario(ag)} • {ag.quadra.nome}
                       </p>
                     </div>
                   </div>

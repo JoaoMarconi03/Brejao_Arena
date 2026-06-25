@@ -7,8 +7,9 @@ import { aprovarAgendamento, cancelarAgendamento } from "@/app/dashboard/agendam
 
 type Pendente = {
   id: string
-  inicio: string
-  fim: string
+  inicioHora: string  // "HH:MM" literal do banco via TO_CHAR
+  fimHora:    string  // "HH:MM"
+  inicioData: string  // "YYYY-MM-DD"
   observacao: string | null
   clienteNome: string | null
   quadraNome: string
@@ -19,14 +20,12 @@ export function PendentesAgendamentos({ pendentes }: { pendentes: Pendente[] }) 
   const [processando, setProcessando] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
-  function fmt(iso: string) {
-    const d = new Date(iso)
-    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-  }
-
-  function fmtData(iso: string) {
-    const d = new Date(iso)
-    return d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" })
+  function fmtData(inicioData: string) {
+    if (!inicioData) return "—"
+    const [y, mo, d] = inicioData.split("-").map(Number)
+    return new Date(y, mo - 1, d).toLocaleDateString("pt-BR", {
+      weekday: "short", day: "2-digit", month: "short",
+    })
   }
 
   function handleAprovar(id: string) {
@@ -81,9 +80,9 @@ export function PendentesAgendamentos({ pendentes }: { pendentes: Pendente[] }) 
                   </p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <CalendarDays className="w-3 h-3 shrink-0" />
-                    <span className="capitalize">{fmtData(p.inicio)}</span>
+                    <span className="capitalize">{fmtData(p.inicioData)}</span>
                     <span>•</span>
-                    <span className="font-mono">{fmt(p.inicio)} → {fmt(p.fim)}</span>
+                    <span className="font-mono">{p.inicioHora} → {p.fimHora}</span>
                     <span>•</span>
                     <span>{p.quadraNome}</span>
                   </div>

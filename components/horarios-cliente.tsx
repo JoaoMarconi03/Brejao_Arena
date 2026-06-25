@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { Lock, CheckCircle2, Clock, XCircle, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,13 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { criarReserva } from "@/app/minha-conta/horarios/actions"
-
-const BLOCOS_OCUPADOS = [
-  { inicio: "10:00", duracaoMin: 60 },
-  { inicio: "14:00", duracaoMin: 120 },
-  { inicio: "19:00", duracaoMin: 90 },
-]
+import { criarReserva, buscarOcupacoes } from "@/app/minha-conta/horarios/actions"
 
 const DURACOES = [
   { label: "1 hora",  min: 60  },
@@ -53,16 +47,16 @@ type BlocoLivre   = { tipo: "livre";   inicio: string; fim: string; duracaoMin: 
 type BlocoOcupado = { tipo: "ocupado"; inicio: string; fim: string }
 type Bloco = BlocoLivre | BlocoOcupado
 
-function buildTimeline(): Bloco[] {
+function buildTimeline(ocp: { inicio: string; fim: string }[]): Bloco[] {
   const blocos: Bloco[] = []
   let current = 8 * 60
   const end = 23 * 60
 
-  const sorted = [...BLOCOS_OCUPADOS].sort((a, b) => toMin(a.inicio) - toMin(b.inicio))
+  const sorted = [...ocp].sort((a, b) => toMin(a.inicio) - toMin(b.inicio))
 
   for (const ocupado of sorted) {
     const bStart = toMin(ocupado.inicio)
-    const bEnd = bStart + ocupado.duracaoMin
+    const bEnd   = toMin(ocupado.fim)
     if (current < bStart) {
       blocos.push({ tipo: "livre", inicio: toStr(current), fim: toStr(bStart), duracaoMin: bStart - current })
     }
@@ -91,6 +85,7 @@ export function HorariosCliente({ nomeCliente, clienteId, quadraId, quadraNome }
   const [observacao, setObservacao] = useState("")
   const [confirmado, setConfirmado] = useState(false)
   const [erro, setErro] = useState("")
+  const [inicioSelecionado, setInicioSelecionado] = useState("08:00")
   const [isPending, startTransition] = useTransition()
 
   // Navegação de dias
@@ -105,41 +100,75 @@ export function HorariosCliente({ nomeCliente, clienteId, quadraId, quadraNome }
     return d
   })
 
-  const timeline = buildTimeline()
+  const [ocupacoes, setOcupacoes] = useState<{ inicio: string; fim: string }[]>([])
+  const [carregando, setCarregando] = useState(true)
 
-  function abrirModal(inicio: string) {
-    const inicioMin = toMin(inicio)
-    const fimMin = inicioMin + duracaoMin
-    setHorarioSelecionado({ inicio, fim: toStr(fimMin) })
+  useEffect(() => {
+    setCarregando(true)
+    const d = new Date()
+    d.setDate(d.getDate() + offset)
+    const dataStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    buscarOcupacoes(quadraId, dataStr)
+      .then(setOcupacoes)
+      .finally(() => setCarregando(false))
+  }, [offset, quadraId])
+
+  const timeline = buildTimeline(ocupacoes)
+
+  function abrirModal(preInicio?: string) {
+    const inicio = preInicio ?? "08:00"
+    setInicioSelecionado(inicio)
+    setHorarioSelecionado({ inicio, fim: toStr(toMin(inicio) + duracaoMin) })
     setObservacao("")
     setConfirmado(false)
     setModalOpen(true)
+  }
+
+  function handleInicioChange(hora: string) {
+    setInicioSelecionado(hora)
+    setHorarioSelecionado({ inicio: hora, fim: toStr(toMin(hora) + duracaoMin) })
+  }
+
+  function isConflito(slotHora: string): boolean {
+    const slotStart = toMin(slotHora)
+    const slotEnd   = slotStart + duracaoMin
+    return ocupacoes.some((occ) => {
+      const occStart = toMin(occ.inicio)
+      const occEnd   = toMin(occ.fim)
+      return slotStart < occEnd && occStart < slotEnd
+    })
   }
 
   function confirmarReserva() {
     if (!horarioSelecionado) return
     setErro("")
 
-    // Monta os DateTimes combinando dataAtual + horário selecionado
-    const [hIni, mIni] = horarioSelecionado.inicio.split(":").map(Number)
-    const [hFim, mFim] = horarioSelecionado.fim.split(":").map(Number)
+    if (isConflito(horarioSelecionado.inicio)) {
+      setErro("Este horário já está ocupado. Escolha outro.")
+      return
+    }
 
-    const inicio = new Date(dataAtual)
-    inicio.setHours(hIni, mIni, 0, 0)
-
-    const fim = new Date(dataAtual)
-    fim.setHours(hFim, mFim, 0, 0)
+    // Envia data e hora separados — o servidor interpreta como BRT (sem depender do fuso do navegador)
+    const dataStr = [
+      dataAtual.getFullYear(),
+      String(dataAtual.getMonth() + 1).padStart(2, "0"),
+      String(dataAtual.getDate()).padStart(2, "0"),
+    ].join("-")
 
     startTransition(async () => {
       try {
         await criarReserva({
           clienteId,
           quadraId,
-          inicio: inicio.toISOString(),
-          fim: fim.toISOString(),
+          data:       dataStr,
+          horaInicio: horarioSelecionado.inicio,
+          horaFim:    horarioSelecionado.fim,
           observacao: observacao.trim() || null,
         })
         setConfirmado(true)
+        // Re-fetch ocupações para refletir o novo agendamento na timeline
+        const ocp = await buscarOcupacoes(quadraId, dataStr)
+        setOcupacoes(ocp)
       } catch {
         setErro("Erro ao salvar reserva. Tente novamente.")
       }
@@ -227,7 +256,16 @@ export function HorariosCliente({ nomeCliente, clienteId, quadraId, quadraNome }
         </div>
 
         <div className="divide-y divide-border">
-          {timeline.map((bloco) => {
+          {carregando ? (
+            <div className="px-5 py-8 text-center text-muted-foreground text-sm animate-pulse">
+              Verificando disponibilidade...
+            </div>
+          ) : timeline.length === 0 ? (
+            <div className="px-5 py-8 text-center text-muted-foreground text-sm">
+              Nenhum horário encontrado para este dia.
+            </div>
+          ) : null}
+          {!carregando && timeline.map((bloco) => {
             if (bloco.tipo === "ocupado") {
               return (
                 <div key={bloco.inicio} className="flex items-center gap-4 px-5 py-4 bg-destructive/5">
@@ -292,7 +330,7 @@ export function HorariosCliente({ nomeCliente, clienteId, quadraId, quadraNome }
         <DialogContent className="bg-card border-border sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-foreground">
-              {confirmado ? "Reserva enviada!" : "Confirmar reserva"}
+              {confirmado ? "Reserva enviada!" : "Escolher horário"}
             </DialogTitle>
           </DialogHeader>
 
@@ -316,8 +354,8 @@ export function HorariosCliente({ nomeCliente, clienteId, quadraId, quadraNome }
             </div>
           ) : (
             <div className="space-y-4 pt-1">
-              {/* Resumo do agendamento */}
-              <div className="bg-secondary rounded-xl p-4 space-y-2.5">
+              {/* Informações fixas */}
+              <div className="bg-secondary rounded-xl p-4 space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   <CalendarDays className="w-4 h-4 text-primary shrink-0" />
                   <span className="text-muted-foreground">Data:</span>
@@ -325,21 +363,51 @@ export function HorariosCliente({ nomeCliente, clienteId, quadraId, quadraNome }
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="w-4 h-4 text-primary shrink-0" />
-                  <span className="text-muted-foreground">Horário:</span>
-                  <span className="font-mono font-bold">
-                    {horarioSelecionado?.inicio} → {horarioSelecionado?.fim}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="w-4 h-4 shrink-0" />
                   <span className="text-muted-foreground">Duração:</span>
                   <span className="font-medium">{DURACOES.find(d => d.min === duracaoMin)?.label}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="w-4 h-4 shrink-0" />
-                  <span className="text-muted-foreground">Cliente:</span>
-                  <span className="font-medium">{nomeCliente}</span>
+              </div>
+
+              {/* Seletor de horário */}
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Horário de início</Label>
+                  <select
+                    value={inicioSelecionado}
+                    onChange={(e) => handleInicioChange(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-secondary text-foreground px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                  >
+                    {Array.from({ length: 30 }, (_, i) => toStr(8 * 60 + i * 30))
+                      .filter((s) => toMin(s) + duracaoMin <= 23 * 60)
+                      .map((slot) => {
+                        const ocupado = isConflito(slot)
+                        return (
+                          <option
+                            key={slot}
+                            value={slot}
+                            disabled={ocupado}
+                            style={{ background: "hsl(var(--card))", color: ocupado ? "gray" : "inherit" }}
+                          >
+                            {slot}{ocupado ? "  —  ocupado" : ""}
+                          </option>
+                        )
+                      })}
+                  </select>
                 </div>
+
+                {horarioSelecionado && (
+                  <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl px-4 py-3">
+                    <Clock className="w-4 h-4 text-primary shrink-0" />
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-xl">{horarioSelecionado.inicio}</span>
+                      <span className="text-muted-foreground text-sm">→</span>
+                      <span className="font-mono font-bold text-xl">{horarioSelecionado.fim}</span>
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({DURACOES.find((d) => d.min === duracaoMin)?.label})
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Observação */}

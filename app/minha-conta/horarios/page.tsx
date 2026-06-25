@@ -20,7 +20,7 @@ export default async function HorariosPage() {
   ])
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur">
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">

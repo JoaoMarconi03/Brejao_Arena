@@ -19,13 +19,30 @@ export default async function AgendamentosPage() {
     orderBy: { inicio: "asc" },
   })
 
+  // Busca horários como strings literais para evitar conversão de timezone
+  const ids = pendentes.map((p) => p.id)
+  const horariosRaw = ids.length
+    ? await db.$queryRaw<Array<{ id: string; inicioHora: string; fimHora: string; inicioData: string }>>`
+        SELECT
+          id,
+          TO_CHAR(inicio, 'HH24:MI')    AS "inicioHora",
+          TO_CHAR(fim,    'HH24:MI')    AS "fimHora",
+          TO_CHAR(inicio, 'YYYY-MM-DD') AS "inicioData"
+        FROM "Agendamento"
+        WHERE id = ANY(${ids})
+      `
+    : []
+
+  const horariosMap = Object.fromEntries(horariosRaw.map((h) => [h.id, h]))
+
   const pendentesSerializados = pendentes.map((p) => ({
     id: p.id,
-    inicio: p.inicio.toISOString(),
-    fim: p.fim.toISOString(),
-    observacao: p.observacao,
+    inicioHora:  horariosMap[p.id]?.inicioHora  ?? "--:--",
+    fimHora:     horariosMap[p.id]?.fimHora     ?? "--:--",
+    inicioData:  horariosMap[p.id]?.inicioData  ?? "",
+    observacao:  p.observacao,
     clienteNome: p.cliente?.nome ?? null,
-    quadraNome: p.quadra.nome,
+    quadraNome:  p.quadra.nome,
   }))
 
   return (
