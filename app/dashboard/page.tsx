@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { auth } from "@/auth"
 import { db } from "@/lib/db"
+import { AutoRefresh } from "@/components/auto-refresh"
 
 export default async function DashboardPage() {
   const session = await auth()
@@ -101,6 +102,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
+      <AutoRefresh segundos={5} />
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-foreground">Dashboard</h1>

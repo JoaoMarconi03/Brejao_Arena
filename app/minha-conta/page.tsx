@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { SignOutButton } from "@/components/sign-out-button"
 import { db } from "@/lib/db"
+import { AutoRefresh } from "@/components/auto-refresh"
 
 const STATUS_STYLES: Record<string, string> = {
   CONFIRMADO: "bg-primary/10 text-primary",
@@ -99,6 +100,7 @@ export default async function MinhaContaPage() {
 
   return (
     <div className="min-h-screen text-foreground">
+      <AutoRefresh segundos={5} />
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur">
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">

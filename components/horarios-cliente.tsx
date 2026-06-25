@@ -76,6 +76,13 @@ export function HorariosCliente({
     buscarOcupacoes(quadraId, dateStr).then(setOcupacoes)
   }, [dateStr, quadraId])
 
+  useEffect(() => {
+    const id = setInterval(() => {
+      buscarOcupacoes(quadraId, dateStr).then(setOcupacoes)
+    }, 5 * 1000)
+    return () => clearInterval(id)
+  }, [quadraId, dateStr])
+
   // Gera slots de 30 em 30 min: 08:00, 08:30 … 22:30
   const slots: string[] = []
   for (let min = HOUR_START * 60; min < HOUR_END * 60; min += 30) {

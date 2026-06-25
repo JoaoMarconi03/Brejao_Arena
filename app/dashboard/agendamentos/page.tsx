@@ -2,6 +2,7 @@ import { auth } from "@/auth"
 import { db } from "@/lib/db"
 import { PendentesAgendamentos } from "@/components/dashboard/pendentes-agendamentos"
 import { CalendarioAgendamentos } from "@/components/dashboard/calendario-agendamentos"
+import { AutoRefresh } from "@/components/auto-refresh"
 
 export default async function AgendamentosPage() {
   const session = await auth()
@@ -49,6 +50,7 @@ export default async function AgendamentosPage() {
 
   return (
     <div className="flex flex-col h-full">
+      <AutoRefresh segundos={5} />
       {pendentesSerializados.length > 0 && (
         <PendentesAgendamentos pendentes={pendentesSerializados} />
       )}
