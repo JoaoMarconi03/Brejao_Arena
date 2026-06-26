@@ -1,4 +1,4 @@
-import { mp } from "@/lib/mercadopago"
+import { getMpClient } from "@/lib/mercadopago"
 import { Payment } from "mercadopago"
 import { db } from "@/lib/db"
 import { enviarMensagemWhatsApp } from "@/lib/whatsapp"
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
       return Response.json({ ok: true })
     }
 
-    const payment = new Payment(mp)
+    const payment = new Payment(getMpClient())
     const paymentData = await payment.get({ id: String(body.data.id) })
 
     if (paymentData.status !== "approved") {

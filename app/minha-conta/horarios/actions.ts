@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { enviarMensagemWhatsApp } from "@/lib/whatsapp"
-import { mp } from "@/lib/mercadopago"
+import { getMpClient } from "@/lib/mercadopago"
 import { Preference } from "mercadopago"
 
 export async function buscarOcupacoes(
@@ -64,7 +64,7 @@ export async function criarPreferenciaPagamento(dados: {
   })
 
   const baseUrl = process.env.NEXT_PUBLIC_URL ?? ""
-  const preference = new Preference(mp)
+  const preference = new Preference(getMpClient())
   const result = await preference.create({
     body: {
       items: [{
