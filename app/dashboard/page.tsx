@@ -1,4 +1,4 @@
-import { Calendar, Users, ShoppingCart, BookOpen, TrendingUp, Clock } from "lucide-react"
+import { Calendar, ShoppingCart, BookOpen, TrendingUp, Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { auth } from "@/auth"
@@ -43,9 +43,6 @@ export default async function DashboardPage() {
       `
     : []
 
-  // Total de clientes
-  const totalClientes = await db.cliente.count({ where: { tenantId } })
-
   // Faturamento hoje: soma dos valores confirmados
   const faturamento = agendamentosHoje
     .filter((a) => a.status === "CONFIRMADO" && a.valor != null)
@@ -85,14 +82,6 @@ export default async function DashboardPage() {
       value: faturamento > 0 ? `R$ ${faturamento.toFixed(2).replace(".", ",")}` : "R$ 0,00",
       sub: "agendamentos confirmados",
       icon: TrendingUp,
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    {
-      title: "Clientes Ativos",
-      value: String(totalClientes),
-      sub: "cadastrados",
-      icon: Users,
       color: "text-primary",
       bg: "bg-primary/10",
     },
