@@ -47,22 +47,38 @@ type ItemInput = { produtoId: string; nome: string; preco: number; quantidade: n
 
 export async function buscarVendas() {
   const tenantId = await getTenantId()
-  const hoje = new Date()
-  const dateKey = hoje.toISOString().slice(0, 10)
 
-  const vendas = await db.venda.findMany({
-    where: {
-      tenantId,
-      criadoEm: {
-        gte: new Date(`${dateKey}T00:00:00`),
-        lte: new Date(`${dateKey}T23:59:59`),
-      },
-    },
-    include: { itens: true },
-    orderBy: { criadoEm: "desc" },
-  })
+  const rows = await db.$queryRaw<Array<{
+    id: string
+    cliente: string | null
+    formaPagamento: string
+    total: string
+    criadoEm: Date
+    itemId: string
+    produtoId: string
+    nome: string
+    preco: string
+    quantidade: number
+  }>>`
+    SELECT
+      v.id, v.cliente, v."formaPagamento"::text, v.total::text, v."criadoEm",
+      i.id AS "itemId", i."produtoId", i.nome, i.preco::text, i.quantidade
+    FROM "Venda" v
+    JOIN "ItemVenda" i ON i."vendaId" = v.id
+    WHERE v."tenantId" = ${tenantId}
+      AND TO_CHAR(v."criadoEm", 'YYYY-MM-DD') = TO_CHAR(NOW(), 'YYYY-MM-DD')
+    ORDER BY v."criadoEm" DESC
+  `
 
-  return vendas.map((v) => ({
+  const map = new Map<string, (typeof rows)[0] & { itens: typeof rows }>()
+  for (const r of rows) {
+    if (!map.has(r.id)) {
+      map.set(r.id, { ...r, itens: [] })
+    }
+    map.get(r.id)!.itens.push(r)
+  }
+
+  return Array.from(map.values()).map((v) => ({
     id: v.id,
     cliente: v.cliente ?? "",
     formaPagamento: v.formaPagamento as "DINHEIRO" | "PIX" | "CARTAO",

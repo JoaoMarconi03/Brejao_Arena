@@ -202,11 +202,11 @@ export default function BarPage() {
         } else {
           await criarVenda(payload)
         }
-        const lista = await buscarVendas()
-        setVendas(lista)
         setDialogVenda(false)
-      } catch (e) {
-        setErroVenda("Erro ao salvar venda. Tente novamente.")
+        buscarVendas().then(setVendas).catch(console.error)
+      } catch (e: any) {
+        const msg = e?.message ?? String(e)
+        setErroVenda(`Erro: ${msg}`)
         console.error(e)
       }
     })
