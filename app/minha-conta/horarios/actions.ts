@@ -34,63 +34,64 @@ export async function criarPreferenciaPagamento(dados: {
   horaFim:    string
   duracaoMin: number
 }) {
-  const session = await auth()
-  if (!session?.user) throw new Error("Não autorizado")
+  try {
+    const session = await auth()
+    if (!session?.user) return { ok: false as const, erro: "Não autorizado" }
 
-  const quadra = await db.quadra.findUnique({ where: { id: dados.quadraId } })
-  if (!quadra) throw new Error("Quadra não encontrada")
+    const quadra = await db.quadra.findUnique({ where: { id: dados.quadraId } })
+    if (!quadra) return { ok: false as const, erro: "Quadra não encontrada" }
 
-  let valorTotal: number
-  if (dados.duracaoMin === 60)       valorTotal = Number(quadra.valor1h   ?? 0)
-  else if (dados.duracaoMin === 90)  valorTotal = Number(quadra.valor1h30 ?? 0)
-  else                               valorTotal = Number(quadra.valor2h   ?? 0)
+    let valorTotal: number
+    if (dados.duracaoMin === 60)       valorTotal = Number(quadra.valor1h   ?? 0)
+    else if (dados.duracaoMin === 90)  valorTotal = Number(quadra.valor1h30 ?? 0)
+    else                               valorTotal = Number(quadra.valor2h   ?? 0)
 
-  if (valorTotal <= 0) throw new Error("Preço da quadra não configurado")
+    if (valorTotal <= 0) return { ok: false as const, erro: "Preço da quadra não configurado. Configure os valores nas configurações." }
 
-  const valorEntrada = Math.round(valorTotal * 0.5 * 100) / 100
+    const valorEntrada = Math.round(valorTotal * 0.5 * 100) / 100
 
-  const [ano, mes, dia] = dados.data.split("-")
-  const titulo = `${quadra.nome} — ${dia}/${mes}/${ano} ${dados.horaInicio}–${dados.horaFim}`
+    const [ano, mes, dia] = dados.data.split("-")
+    const titulo = `${quadra.nome} — ${dia}/${mes}/${ano} ${dados.horaInicio}–${dados.horaFim}`
 
-  const externalRef = JSON.stringify({
-    clienteId:  dados.clienteId,
-    quadraId:   dados.quadraId,
-    data:       dados.data,
-    horaInicio: dados.horaInicio,
-    horaFim:    dados.horaFim,
-    valorTotal,
-  })
+    const externalRef = JSON.stringify({
+      clienteId:  dados.clienteId,
+      quadraId:   dados.quadraId,
+      data:       dados.data,
+      horaInicio: dados.horaInicio,
+      horaFim:    dados.horaFim,
+      valorTotal,
+    })
 
-  const baseUrl = process.env.NEXT_PUBLIC_URL ?? ""
-  const { Preference } = await import("mercadopago")
-  const { getMpClient } = await import("@/lib/mercadopago")
-  const preference = new Preference(getMpClient())
-  const result = await preference.create({
-    body: {
-      items: [{
-        id:          dados.quadraId,
-        title:       titulo,
-        quantity:    1,
-        unit_price:  valorEntrada,
-        currency_id: "BRL",
-      }],
-      external_reference: externalRef,
-      back_urls: {
-        success: `${baseUrl}/minha-conta/horarios/sucesso`,
-        failure: `${baseUrl}/minha-conta/horarios/falha`,
-        pending: `${baseUrl}/minha-conta/horarios/sucesso`,
+    const baseUrl = process.env.NEXT_PUBLIC_URL ?? ""
+    const { Preference } = await import("mercadopago")
+    const { getMpClient } = await import("@/lib/mercadopago")
+    const preference = new Preference(getMpClient())
+    const result = await preference.create({
+      body: {
+        items: [{
+          id:          dados.quadraId,
+          title:       titulo,
+          quantity:    1,
+          unit_price:  valorEntrada,
+          currency_id: "BRL",
+        }],
+        external_reference: externalRef,
+        back_urls: {
+          success: `${baseUrl}/minha-conta/horarios/sucesso`,
+          failure: `${baseUrl}/minha-conta/horarios/falha`,
+          pending: `${baseUrl}/minha-conta/horarios/sucesso`,
+        },
+        auto_return: "approved",
+        notification_url: `${baseUrl}/api/pagamento/webhook`,
       },
-      auto_return: "approved",
-      notification_url: `${baseUrl}/api/pagamento/webhook`,
-    },
-  })
+    })
 
-  if (!result.init_point) throw new Error("Erro ao criar preferência de pagamento")
+    if (!result.init_point) return { ok: false as const, erro: "Erro ao criar preferência de pagamento" }
 
-  return {
-    checkoutUrl: result.init_point,
-    valorTotal,
-    valorEntrada,
+    return { ok: true as const, checkoutUrl: result.init_point, valorTotal, valorEntrada }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro ao processar pagamento"
+    return { ok: false as const, erro: msg }
   }
 }
 

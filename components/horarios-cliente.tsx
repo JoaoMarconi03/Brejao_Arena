@@ -120,19 +120,19 @@ export function HorariosCliente({
 
     setErro(null)
     startTransition(async () => {
-      try {
-        const { checkoutUrl } = await criarPreferenciaPagamento({
-          clienteId,
-          quadraId,
-          data:       dateStr,
-          horaInicio: slotAberto,
-          horaFim:    fim,
-          duracaoMin: duracaoSel,
-        })
-        window.location.href = checkoutUrl
-      } catch (e: any) {
-        setErro(e?.message ?? "Erro ao iniciar pagamento.")
+      const result = await criarPreferenciaPagamento({
+        clienteId,
+        quadraId,
+        data:       dateStr,
+        horaInicio: slotAberto,
+        horaFim:    fim,
+        duracaoMin: duracaoSel,
+      })
+      if (!result.ok) {
+        setErro(result.erro ?? "Erro ao processar pagamento")
+        return
       }
+      window.location.href = result.checkoutUrl
     })
   }
 
