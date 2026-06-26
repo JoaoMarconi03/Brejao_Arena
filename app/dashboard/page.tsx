@@ -9,34 +9,39 @@ export default async function DashboardPage() {
   const session = await auth()
   const tenantId = (session?.user as any)?.tenantId ?? ""
 
-  // Agendamentos de hoje via raw SQL com TO_CHAR para evitar problema de timezone
-  const agendamentosHoje = await db.$queryRaw<Array<{
-    id: string
-    inicioHora: string
-    fimHora: string
-    status: string
-    tipo: string
-    valor: string | null
-    observacao: string | null
-    clienteNome: string | null
-  }>>`
-    SELECT
-      a.id,
-      TO_CHAR(a.inicio, 'HH24:MI')   AS "inicioHora",
-      TO_CHAR(a.fim,    'HH24:MI')   AS "fimHora",
-      a.status::text,
-      a.tipo::text,
-      a.valor::text,
-      a.observacao,
-      c.nome AS "clienteNome"
-    FROM "Agendamento" a
-    JOIN "Quadra" q ON q.id = a."quadraId"
-    LEFT JOIN "Cliente" c ON c.id = a."clienteId"
-    WHERE q."tenantId" = ${tenantId}
-      AND TO_CHAR(a.inicio, 'YYYY-MM-DD') = TO_CHAR(NOW(), 'YYYY-MM-DD')
-      AND a.status != 'CANCELADO'::"StatusAgendamento"
-    ORDER BY a.inicio ASC
-  `
+  // Pega IDs das quadras do tenant (mesmo padrão da página de agendamentos)
+  const quadras = await db.quadra.findMany({ where: { tenantId }, select: { id: true } })
+  const quadraIds = quadras.map((q) => q.id)
+
+  // Agendamentos de hoje com TO_CHAR para evitar problema de timezone
+  const agendamentosHoje = quadraIds.length > 0
+    ? await db.$queryRaw<Array<{
+        id: string
+        inicioHora: string
+        fimHora: string
+        status: string
+        tipo: string
+        valor: string | null
+        observacao: string | null
+        clienteNome: string | null
+      }>>`
+        SELECT
+          a.id,
+          TO_CHAR(a.inicio, 'HH24:MI') AS "inicioHora",
+          TO_CHAR(a.fim,    'HH24:MI') AS "fimHora",
+          a.status::text,
+          a.tipo::text,
+          a.valor::text,
+          a.observacao,
+          c.nome AS "clienteNome"
+        FROM "Agendamento" a
+        LEFT JOIN "Cliente" c ON c.id = a."clienteId"
+        WHERE a."quadraId" = ANY(${quadraIds})
+          AND TO_CHAR(a.inicio, 'YYYY-MM-DD') = TO_CHAR(NOW(), 'YYYY-MM-DD')
+          AND a.status != 'CANCELADO'::"StatusAgendamento"
+        ORDER BY a.inicio ASC
+      `
+    : []
 
   // Total de clientes
   const totalClientes = await db.cliente.count({ where: { tenantId } })
