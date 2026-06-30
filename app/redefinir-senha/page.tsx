@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
+import { signOut } from "next-auth/react"
 import { ArrowLeft, Trophy, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -40,7 +41,7 @@ function RedefinirSenhaForm() {
     setLoad(false)
     if (!resultado.ok) { setErro(resultado.erro ?? "Erro ao redefinir."); return }
     setSucesso(true)
-    setTimeout(() => router.push("/login"), 3000)
+    setTimeout(() => signOut({ redirectUrl: "/login" }), 3000)
   }
 
   return (
