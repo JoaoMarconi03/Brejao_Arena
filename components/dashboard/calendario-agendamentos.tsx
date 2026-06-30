@@ -73,12 +73,13 @@ type Agendamento = {
 }
 
 type FormState = {
-  tipo:    "AVULSO" | "MENSALISTA"
-  cliente: string
-  dataSel: Date
-  inicio:  string
-  fim:     string
-  valor:   string
+  tipo:      "AVULSO" | "MENSALISTA"
+  cliente:   string
+  clienteId: string | null   // id real quando vinculado a conta
+  dataSel:   Date
+  inicio:    string
+  fim:       string
+  valor:     string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -156,27 +157,31 @@ export function CalendarioAgendamentos({
   quadraId,
   quadraNome,
   precos = {},
+  clienteFixo,
 }: {
-  quadraId:   string
-  quadraNome: string
-  precos?:    Precos
+  quadraId:    string
+  quadraNome:  string
+  precos?:     Precos
+  clienteFixo?: { id: string; nome: string }
 }) {
   const [date, setDate]                 = useState(new Date())
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
-  const [dialogOpen, setDialogOpen]     = useState(false)
-  const [editandoId, setEditandoId]     = useState<string | null>(null)
-  const [salvando, setSalvando]         = useState(false)
-  const [excluindo, setExcluindo]       = useState<string | null>(null)
-  const [erro, setErro]                 = useState("")
-  const [sucesso, setSucesso]           = useState("")
+  const [dialogOpen, setDialogOpen]         = useState(false)
+  const [editandoId, setEditandoId]         = useState<string | null>(null)
+  const [salvando, setSalvando]             = useState(false)
+  const [excluindo, setExcluindo]           = useState<string | null>(null)
+  const [confirmarExclusao, setConfirmar]   = useState<string | null>(null)
+  const [erro, setErro]                     = useState("")
+  const [sucesso, setSucesso]               = useState("")
 
   const [form, setForm] = useState<FormState>({
-    tipo:    "AVULSO",
-    cliente: "",
-    dataSel: new Date(),
-    inicio:  "18:00",
-    fim:     "19:00",
-    valor:   "",
+    tipo:      "AVULSO",
+    cliente:   "",
+    clienteId: null,
+    dataSel:   new Date(),
+    inicio:    "18:00",
+    fim:       "19:00",
+    valor:     "",
   })
   const [calAberto, setCalAberto] = useState(false)
 
@@ -192,6 +197,14 @@ export function CalendarioAgendamentos({
       .then(setAgendamentos)
       .catch((err) => console.error("[agendamentos] erro ao buscar:", err))
   }, [key])
+
+  // Abre o dialog automaticamente quando a página é aberta com um clienteFixo
+  useEffect(() => {
+    if (clienteFixo) {
+      abrirDialog()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteFixo?.id])
 
   const datasMensais = form.tipo === "MENSALISTA" ? gerarDatasMensais(form.dataSel) : []
   const conflitos    = conflitosNoPeriodo(form.inicio, form.fim, agendamentos, editandoId ?? undefined)
@@ -211,7 +224,15 @@ export function CalendarioAgendamentos({
     const fim      = `${Math.floor(fimMin / 60).toString().padStart(2, "0")}:${(fimMin % 60).toString().padStart(2, "0")}`
     const durMin   = fimMin - (inicioH * 60 + inicioM)
     const valorAuto = valorParaDuracao(durMin, precos)
-    setForm({ tipo: "AVULSO", cliente: "", dataSel: date, inicio, fim, valor: valorAuto })
+    setForm({
+      tipo:      "AVULSO",
+      cliente:   clienteFixo?.nome ?? "",
+      clienteId: clienteFixo?.id   ?? null,
+      dataSel:   date,
+      inicio,
+      fim,
+      valor: valorAuto,
+    })
     setEditandoId(null)
     setCalAberto(false)
     setErro("")
@@ -225,12 +246,13 @@ export function CalendarioAgendamentos({
     const fimM   = fimMin % 60
     const fimStr = `${fimH.toString().padStart(2, "0")}:${fimM.toString().padStart(2, "0")}`
     setForm({
-      tipo:    ag.tipo,
-      cliente: ag.clienteNome,
-      dataSel: date,
-      inicio:  fmt(ag.inicio.h, ag.inicio.m),
-      fim:     fimStr,
-      valor:   ag.valor > 0 ? String(ag.valor) : "",
+      tipo:      ag.tipo,
+      cliente:   ag.clienteNome,
+      clienteId: null,   // edição não altera vínculo
+      dataSel:   date,
+      inicio:    fmt(ag.inicio.h, ag.inicio.m),
+      fim:       fimStr,
+      valor:     ag.valor > 0 ? String(ag.valor) : "",
     })
     setEditandoId(ag.id)
     setErro("")
@@ -238,16 +260,20 @@ export function CalendarioAgendamentos({
     setDialogOpen(true)
   }
 
-  async function handleExcluir(id: string, e: React.MouseEvent) {
+  function handleExcluir(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!window.confirm("Excluir este agendamento?")) return
+    setConfirmar(id)
+  }
+
+  async function confirmarEExcluir() {
+    if (!confirmarExclusao) return
+    const id = confirmarExclusao
+    setConfirmar(null)
     setExcluindo(id)
     try {
       await excluirAgendamento(id)
       const lista = await buscarAgendamentosPorData(key)
       setAgendamentos(lista)
-    } catch {
-      alert("Erro ao excluir. Tente novamente.")
     } finally {
       setExcluindo(null)
     }
@@ -279,6 +305,7 @@ export function CalendarioAgendamentos({
         await criarAgendamentoAdmin({
           quadraId,
           nomeCliente: form.cliente.trim(),
+          clienteId:   form.clienteId ?? undefined,
           data:        dataISO,
           horaInicio:  form.inicio,
           duracaoMin,
@@ -290,6 +317,7 @@ export function CalendarioAgendamentos({
         await criarAgendamentosMensaisAdmin({
           quadraId,
           nomeCliente: form.cliente.trim(),
+          clienteId:   form.clienteId ?? undefined,
           dataInicio:  dataISO,
           horaInicio:  form.inicio,
           duracaoMin,
@@ -490,6 +518,36 @@ export function CalendarioAgendamentos({
         </div>
       </div>
 
+      {/* ── Dialog: Confirmar exclusão ── */}
+      <Dialog open={!!confirmarExclusao} onOpenChange={(o) => { if (!o) setConfirmar(null) }}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Excluir agendamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Tem certeza que deseja excluir este agendamento? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 border-border"
+                onClick={() => setConfirmar(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={confirmarEExcluir}
+              >
+                Excluir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Dialog: Novo / Editar Agendamento ── */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!salvando) { setDialogOpen(open); if (!open) setEditandoId(null) } }}>
         <DialogContent className="bg-card border-border w-full max-w-md mx-auto max-h-[92vh] overflow-y-auto">
@@ -536,12 +594,21 @@ export function CalendarioAgendamentos({
               <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Nome do Cliente
               </Label>
-              <Input
-                placeholder="Ex: João Silva"
-                value={form.cliente}
-                onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}
-                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
-              />
+              {form.clienteId ? (
+                <div className="flex items-center gap-2 h-11 px-3 rounded-md border border-primary/40 bg-primary/5">
+                  <span className="text-sm font-semibold text-foreground flex-1 truncate">{form.cliente}</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-md shrink-0">
+                    Vinculado
+                  </span>
+                </div>
+              ) : (
+                <Input
+                  placeholder="Ex: João Silva"
+                  value={form.cliente}
+                  onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
+                />
+              )}
             </div>
 
             {/* ── Data ── */}

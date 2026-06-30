@@ -156,6 +156,7 @@ function calcFim(horaInicio: string, duracaoMin: number) {
 export async function criarAgendamentoAdmin(dados: {
   quadraId:    string
   nomeCliente: string
+  clienteId?:  string   // opcional — vincula ao cliente registrado
   data:        string   // "YYYY-MM-DD"
   horaInicio:  string   // "HH:MM"
   duracaoMin:  number
@@ -168,20 +169,38 @@ export async function criarAgendamentoAdmin(dados: {
   const inicioStr = `${dados.data} ${dados.horaInicio}:00`
   const fimStr    = `${dados.data} ${horaFim}:00`
 
-  await db.$executeRaw`
-    INSERT INTO "Agendamento" (id, inicio, fim, status, tipo, "quadraId", observacao, valor, "criadoEm")
-    VALUES (
-      gen_random_uuid(),
-      ${inicioStr}::timestamp,
-      ${fimStr}::timestamp,
-      'CONFIRMADO'::"StatusAgendamento",
-      ${dados.tipo}::"TipoAgendamento",
-      ${dados.quadraId},
-      ${dados.nomeCliente},
-      ${dados.valor}::decimal,
-      NOW()
-    )
-  `
+  if (dados.clienteId) {
+    await db.$executeRaw`
+      INSERT INTO "Agendamento" (id, inicio, fim, status, tipo, "quadraId", "clienteId", observacao, valor, "criadoEm")
+      VALUES (
+        gen_random_uuid(),
+        ${inicioStr}::timestamp,
+        ${fimStr}::timestamp,
+        'CONFIRMADO'::"StatusAgendamento",
+        ${dados.tipo}::"TipoAgendamento",
+        ${dados.quadraId},
+        ${dados.clienteId},
+        ${dados.nomeCliente},
+        ${dados.valor}::decimal,
+        NOW()
+      )
+    `
+  } else {
+    await db.$executeRaw`
+      INSERT INTO "Agendamento" (id, inicio, fim, status, tipo, "quadraId", observacao, valor, "criadoEm")
+      VALUES (
+        gen_random_uuid(),
+        ${inicioStr}::timestamp,
+        ${fimStr}::timestamp,
+        'CONFIRMADO'::"StatusAgendamento",
+        ${dados.tipo}::"TipoAgendamento",
+        ${dados.quadraId},
+        ${dados.nomeCliente},
+        ${dados.valor}::decimal,
+        NOW()
+      )
+    `
+  }
 
   revalidatePath("/dashboard/agendamentos")
 }
@@ -189,6 +208,7 @@ export async function criarAgendamentoAdmin(dados: {
 export async function criarAgendamentosMensaisAdmin(dados: {
   quadraId:    string
   nomeCliente: string
+  clienteId?:  string   // opcional — vincula ao cliente registrado
   dataInicio:  string   // "YYYY-MM-DD"
   horaInicio:  string   // "HH:MM"
   duracaoMin:  number
@@ -211,20 +231,38 @@ export async function criarAgendamentosMensaisAdmin(dados: {
     const inicioStr = `${data} ${dados.horaInicio}:00`
     const fimStr    = `${data} ${horaFim}:00`
 
-    await db.$executeRaw`
-      INSERT INTO "Agendamento" (id, inicio, fim, status, tipo, "quadraId", observacao, valor, "criadoEm")
-      VALUES (
-        gen_random_uuid(),
-        ${inicioStr}::timestamp,
-        ${fimStr}::timestamp,
-        'CONFIRMADO'::"StatusAgendamento",
-        'MENSALISTA'::"TipoAgendamento",
-        ${dados.quadraId},
-        ${dados.nomeCliente},
-        ${dados.valor}::decimal,
-        NOW()
-      )
-    `
+    if (dados.clienteId) {
+      await db.$executeRaw`
+        INSERT INTO "Agendamento" (id, inicio, fim, status, tipo, "quadraId", "clienteId", observacao, valor, "criadoEm")
+        VALUES (
+          gen_random_uuid(),
+          ${inicioStr}::timestamp,
+          ${fimStr}::timestamp,
+          'CONFIRMADO'::"StatusAgendamento",
+          'MENSALISTA'::"TipoAgendamento",
+          ${dados.quadraId},
+          ${dados.clienteId},
+          ${dados.nomeCliente},
+          ${dados.valor}::decimal,
+          NOW()
+        )
+      `
+    } else {
+      await db.$executeRaw`
+        INSERT INTO "Agendamento" (id, inicio, fim, status, tipo, "quadraId", observacao, valor, "criadoEm")
+        VALUES (
+          gen_random_uuid(),
+          ${inicioStr}::timestamp,
+          ${fimStr}::timestamp,
+          'CONFIRMADO'::"StatusAgendamento",
+          'MENSALISTA'::"TipoAgendamento",
+          ${dados.quadraId},
+          ${dados.nomeCliente},
+          ${dados.valor}::decimal,
+          NOW()
+        )
+      `
+    }
   }
 
   revalidatePath("/dashboard/agendamentos")

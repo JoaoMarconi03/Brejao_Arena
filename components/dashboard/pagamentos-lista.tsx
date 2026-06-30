@@ -33,8 +33,9 @@ type FormEdit = {
 export function PagamentosLista({ pagamentos }: { pagamentos: Pagamento[] }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [excluindo, setExcluindo] = useState<string | null>(null)
-  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [excluindo, setExcluindo]           = useState<string | null>(null)
+  const [confirmarExclusao, setConfirmar]   = useState<string | null>(null)
+  const [editandoId, setEditandoId]         = useState<string | null>(null)
   const [erro, setErro] = useState("")
   const [form, setForm] = useState<FormEdit>({
     nomeCliente: "",
@@ -65,14 +66,18 @@ export function PagamentosLista({ pagamentos }: { pagamentos: Pagamento[] }) {
   }
 
   function handleExcluir(id: string) {
-    if (!window.confirm("Excluir este pagamento?")) return
+    setConfirmar(id)
+  }
+
+  function confirmarEExcluir() {
+    if (!confirmarExclusao) return
+    const id = confirmarExclusao
+    setConfirmar(null)
     setExcluindo(id)
     startTransition(async () => {
       try {
         await excluirAgendamento(id)
         router.refresh()
-      } catch {
-        alert("Erro ao excluir. Tente novamente.")
       } finally {
         setExcluindo(null)
       }
@@ -161,6 +166,36 @@ export function PagamentosLista({ pagamentos }: { pagamentos: Pagamento[] }) {
           )
         })}
       </div>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog open={!!confirmarExclusao} onOpenChange={(o) => { if (!o) setConfirmar(null) }}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Excluir pagamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Tem certeza que deseja excluir este registro? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 border-border"
+                onClick={() => setConfirmar(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={confirmarEExcluir}
+              >
+                Excluir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de edição */}
       <Dialog open={!!editandoId} onOpenChange={(open) => { if (!pending) { if (!open) setEditandoId(null) } }}>

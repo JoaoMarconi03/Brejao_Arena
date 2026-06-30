@@ -4,7 +4,17 @@ import { PendentesAgendamentos } from "@/components/dashboard/pendentes-agendame
 import { CalendarioAgendamentos } from "@/components/dashboard/calendario-agendamentos"
 import { AutoRefresh } from "@/components/auto-refresh"
 
-export default async function AgendamentosPage() {
+export default async function AgendamentosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ clienteId?: string; clienteNome?: string }>
+}) {
+  const params    = await searchParams
+  const clienteFixo =
+    params.clienteId && params.clienteNome
+      ? { id: params.clienteId, nome: decodeURIComponent(params.clienteNome) }
+      : undefined
+
   const session = await auth()
   const tenantId = (session?.user as any)?.tenantId
 
@@ -64,6 +74,7 @@ export default async function AgendamentosPage() {
         quadraId={quadra?.id ?? ""}
         quadraNome={quadra?.nome ?? "Quadra"}
         precos={precos}
+        clienteFixo={clienteFixo}
       />
     </div>
   )
