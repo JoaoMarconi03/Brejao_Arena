@@ -2,8 +2,8 @@ import Link from "next/link"
 import { Trophy, Clock, MapPin, Star, ChevronRight, CalendarDays } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { DiasStrip } from "@/components/dias-strip"
-import { HorariosSection } from "@/components/horarios-section"
+import { HorariosPublico } from "@/components/horarios-publico"
+import { db } from "@/lib/db"
 
 const PRECOS = [
   { duracao: "1 hora", semana: "R$ 120", fimSemana: "R$ 150" },
@@ -12,7 +12,8 @@ const PRECOS = [
 ]
 
 
-export default function HomePage() {
+export default async function HomePage() {
+  const quadra = await db.quadra.findFirst({ where: { ativa: true } })
 
   return (
     <div className="min-h-screen text-foreground">
@@ -45,7 +46,7 @@ export default function HomePage() {
         }}
       >
         <Badge variant="outline" className="mb-4 text-primary border-primary/40">
-          Aberto todos os dias • 08h–23h
+          Seg–Sex 18h–00h • Sáb–Dom 08h–19h
         </Badge>
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
           A sua quadra em{" "}
@@ -71,7 +72,7 @@ export default function HomePage() {
       {/* Info rápida */}
       <section className="max-w-5xl mx-auto px-4 py-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: Clock, titulo: "Horário de funcionamento", desc: "Segunda a domingo, das 08h às 23h" },
+          { icon: Clock, titulo: "Horário de funcionamento", desc: "Seg–Sex 18h–00h · Sáb–Dom 08h–19h" },
           { icon: MapPin, titulo: "Localização", desc: "Brejão — arena society gramado sintético" },
           { icon: Star, titulo: "Mensalistas", desc: "Planos mensais com horário fixo garantido" },
         ].map(({ icon: Icon, titulo, desc }) => (
@@ -93,10 +94,15 @@ export default function HomePage() {
           <CalendarDays className="w-5 h-5 text-primary" />
           <h2 className="text-2xl font-bold">Disponibilidade</h2>
         </div>
-        <p className="text-muted-foreground text-sm mb-6">Selecione a duração desejada e veja os horários disponíveis.</p>
+        <p className="text-muted-foreground text-sm mb-6">Veja os horários disponíveis e reserve direto pelo WhatsApp.</p>
 
-        <DiasStrip />
-        <HorariosSection />
+        <HorariosPublico
+          quadraId={quadra?.id ?? ""}
+          quadraNome={quadra?.nome ?? "Quadra"}
+          valor1h={quadra?.valor1h ? Number(quadra.valor1h) : null}
+          valor1h30={quadra?.valor1h30 ? Number(quadra.valor1h30) : null}
+          valor2h={quadra?.valor2h ? Number(quadra.valor2h) : null}
+        />
       </section>
 
       {/* Preços */}
