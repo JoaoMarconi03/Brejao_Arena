@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react"
 import { Plus, Minus, Pencil, Package, ShoppingBag, Banknote, CreditCard, Smartphone, Trash2 } from "lucide-react"
-import { buscarProdutos, criarProduto, atualizarProduto, buscarVendas, criarVenda, atualizarVenda, excluirVenda } from "./actions"
+import { buscarProdutos, criarProduto, atualizarProduto, excluirProduto, buscarVendas, criarVenda, atualizarVenda, excluirVenda } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -99,7 +99,8 @@ export default function BarPage() {
     formaPagamento: "DINHEIRO" as FormaPagamento,
   })
   const [itensVenda, setItensVenda] = useState<ItemVenda[]>([])
-  const [confirmarExclusao, setConfirmarExclusao] = useState<Venda | null>(null)
+  const [confirmarExclusao, setConfirmarExclusao]           = useState<Venda | null>(null)
+  const [confirmarExclusaoProduto, setConfirmarExcProduto]  = useState<Produto | null>(null)
   const [erroVenda, setErroVenda] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -160,6 +161,12 @@ export default function BarPage() {
     await excluirVenda(id)
     setVendas((prev) => prev.filter((v) => v.id !== id))
     setConfirmarExclusao(null)
+  }
+
+  async function handleExcluirProduto(id: string) {
+    await excluirProduto(id)
+    setProdutos((prev) => prev.filter((p) => p.id !== id))
+    setConfirmarExcProduto(null)
   }
 
   function selecionarProduto(produtoId: string) {
@@ -334,14 +341,24 @@ export default function BarPage() {
                           <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
                           <p className="text-lg font-bold text-primary">R$ {p.preco.toFixed(2)}</p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => abrirEditarProduto(p)}
-                          className="shrink-0 text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </Button>
+                        <div className="flex gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => abrirEditarProduto(p)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setConfirmarExcProduto(p)}
+                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -352,7 +369,37 @@ export default function BarPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ── Dialog: Confirmar exclusão ── */}
+      {/* ── Dialog: Confirmar exclusão de produto ── */}
+      <Dialog open={!!confirmarExclusaoProduto} onOpenChange={(o) => !o && setConfirmarExcProduto(null)}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Excluir produto?</DialogTitle>
+          </DialogHeader>
+          {confirmarExclusaoProduto && (
+            <div className="space-y-4 pt-1">
+              <p className="text-sm text-muted-foreground">
+                O produto{" "}
+                <span className="text-foreground font-medium">{confirmarExclusaoProduto.nome}</span>{" "}
+                será removido do cardápio. Vendas anteriores não serão afetadas.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfirmarExcProduto(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => handleExcluirProduto(confirmarExclusaoProduto.id)}
+                >
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Confirmar exclusão de venda ── */}
       <Dialog open={!!confirmarExclusao} onOpenChange={(o) => !o && setConfirmarExclusao(null)}>
         <DialogContent className="bg-card border-border sm:max-w-sm">
           <DialogHeader>

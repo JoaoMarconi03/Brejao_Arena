@@ -13,13 +13,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   buscarContas,
   criarConta,
   lancarItem,
@@ -58,7 +51,9 @@ export default function FiadoPage() {
   const [clienteSel, setClienteSel]         = useState<ClienteFiado | null>(null)
   const [erroNovaConta, setErroNovaConta]   = useState("")
   const [formNova, setFormNova] = useState({ nome: "", telefone: "", diaFechamento: "30" })
-  const [formLanc, setFormLanc] = useState({ produtoId: "", quantidade: "1" })
+  const [formLanc, setFormLanc]     = useState({ produtoId: "", quantidade: "1" })
+  const [buscaProduto, setBuscaProd] = useState("")
+  const [produtoSelecionado, setProdutoSel] = useState<Produto | null>(null)
   const [formPag,  setFormPag]  = useState({ valor: "", observacao: "" })
 
   async function recarregar() {
@@ -83,10 +78,8 @@ export default function FiadoPage() {
 
   const totalPendente = contas.reduce((s, c) => s + c.saldo, 0)
 
-  // produto selecionado e preview do valor
-  const produtoSel   = produtos.find((p) => p.id === formLanc.produtoId)
   const qtd          = Math.max(1, parseInt(formLanc.quantidade) || 1)
-  const valorPreview = produtoSel ? produtoSel.preco * qtd : 0
+  const valorPreview = produtoSelecionado ? produtoSelecionado.preco * qtd : 0
 
   // ── handlers ──────────────────────────────────────────────────────────────
 
@@ -123,11 +116,11 @@ export default function FiadoPage() {
   }
 
   function handleLancamento() {
-    if (!contaSelecionada || !formLanc.produtoId) return
+    if (!contaSelecionada || !produtoSelecionado) return
     startTransition(async () => {
       await lancarItem({
         contaId:    contaSelecionada.id,
-        produtoId:  formLanc.produtoId,
+        produtoId:  produtoSelecionado.id,
         quantidade: qtd,
       })
       const lista = await buscarContas()
@@ -135,6 +128,8 @@ export default function FiadoPage() {
       const atualizada = lista.find((c) => c.id === contaSelecionada.id) ?? null
       setContaSel(atualizada)
       setFormLanc({ produtoId: "", quantidade: "1" })
+      setProdutoSel(null)
+      setBuscaProd("")
       setDialogLancamento(false)
     })
   }
@@ -419,6 +414,8 @@ export default function FiadoPage() {
                 className="flex-1 border-border gap-2"
                 onClick={() => {
                   setFormLanc({ produtoId: "", quantidade: "1" })
+                  setProdutoSel(null)
+                  setBuscaProd("")
                   setDialogLancamento(true)
                 }}
               >
@@ -450,39 +447,76 @@ export default function FiadoPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
-            <div className="space-y-1.5">
+
+            {/* Produto selecionado ou busca */}
+            <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Produto</Label>
-              <Select value={formLanc.produtoId} onValueChange={(v) => setFormLanc((f) => ({ ...f, produtoId: v }))}>
-                <SelectTrigger className="bg-secondary border-border text-foreground">
-                  <SelectValue placeholder="Selecione o produto" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {produtos.length === 0 && (
-                    <SelectItem value="__empty" disabled className="text-muted-foreground">
-                      Nenhum produto cadastrado
-                    </SelectItem>
-                  )}
-                  {produtos.map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="text-foreground">
-                      {p.nome} — R$ {p.preco.toFixed(2).replace(".", ",")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {produtoSelecionado ? (
+                <div className="flex items-center justify-between rounded-lg bg-primary/10 border border-primary/30 px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{produtoSelecionado.nome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      R$ {produtoSelecionado.preco.toFixed(2).replace(".", ",")} / un.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setProdutoSel(null); setBuscaProd("") }}
+                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                      placeholder="Buscar produto..."
+                      value={buscaProduto}
+                      onChange={(e) => setBuscaProd(e.target.value)}
+                      className="bg-secondary border-border text-foreground placeholder:text-muted-foreground pl-9"
+                    />
+                  </div>
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                    {produtos.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Nenhum produto cadastrado no bar.
+                      </p>
+                    )}
+                    {produtos
+                      .filter((p) => !buscaProduto || p.nome.toLowerCase().includes(buscaProduto.toLowerCase()))
+                      .map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => { setProdutoSel(p); setFormLanc((f) => ({ ...f, produtoId: p.id })) }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-secondary/60 transition-colors flex items-center justify-between"
+                        >
+                          <span className="text-sm font-medium text-foreground">{p.nome}</span>
+                          <span className="text-sm text-primary font-semibold">
+                            R$ {p.preco.toFixed(2).replace(".", ",")}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Quantidade</Label>
-              <Input
-                type="number"
-                min="1"
-                value={formLanc.quantidade}
-                onChange={(e) => setFormLanc((f) => ({ ...f, quantidade: e.target.value }))}
-                className="bg-secondary border-border text-foreground"
-              />
-            </div>
+            {/* Quantidade */}
+            {produtoSelecionado && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Quantidade</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={formLanc.quantidade}
+                  onChange={(e) => setFormLanc((f) => ({ ...f, quantidade: e.target.value }))}
+                  className="bg-secondary border-border text-foreground"
+                />
+              </div>
+            )}
 
-            {produtoSel && (
+            {produtoSelecionado && (
               <div className="flex items-center justify-between rounded-lg bg-primary/5 border border-primary/20 px-3 py-2.5">
                 <span className="text-sm text-muted-foreground">Total</span>
                 <span className="text-base font-bold text-primary">
@@ -498,7 +532,7 @@ export default function FiadoPage() {
               <Button
                 className="flex-1"
                 onClick={handleLancamento}
-                disabled={!formLanc.produtoId || isPending}
+                disabled={!produtoSelecionado || isPending}
               >
                 {isPending ? "Salvando..." : "Lançar"}
               </Button>

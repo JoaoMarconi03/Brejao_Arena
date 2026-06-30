@@ -14,10 +14,16 @@ async function getTenantId() {
 export async function buscarProdutos() {
   const tenantId = await getTenantId()
   const lista = await db.produto.findMany({
-    where: { tenantId },
+    where: { tenantId, ativo: true },
     orderBy: { nome: "asc" },
   })
   return lista.map((p) => ({ ...p, preco: Number(p.preco) }))
+}
+
+export async function excluirProduto(id: string) {
+  await getTenantId()
+  await db.produto.update({ where: { id }, data: { ativo: false } })
+  revalidatePath("/dashboard/bar")
 }
 
 export async function criarProduto(data: {
