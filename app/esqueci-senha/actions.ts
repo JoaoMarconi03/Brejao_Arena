@@ -29,7 +29,7 @@ export async function solicitarRedefinicao(
       data: { email, expiraEm },
     })
 
-    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+    const baseUrl = (process.env.NEXT_PUBLIC_URL ?? "http://localhost:3000").replace(/\/$/, "")
     const link = `${baseUrl}/redefinir-senha?token=${registro.token}`
 
     await resend.emails.send({
