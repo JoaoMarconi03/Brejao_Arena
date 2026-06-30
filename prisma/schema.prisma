@@ -248,3 +248,16 @@ model PagamentoFiado {
   observacao String?
   criadoEm   DateTime   @default(now())
 }
+
+// ─────────────────────────────────────────────
+// REDEFINIÇÃO DE SENHA
+// ─────────────────────────────────────────────
+
+model TokenRedefinicaoSenha {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  email     String
+  expiraEm  DateTime
+  usado     Boolean  @default(false)
+  criadoEm  DateTime @default(now())
+}
