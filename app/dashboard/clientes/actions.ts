@@ -69,6 +69,28 @@ export async function vincularOuBuscarCliente(usuarioId: string): Promise<{ clie
   return { clienteId: cliente.id, clienteNome: cliente.nome }
 }
 
+export async function criarClienteManual(dados: {
+  nome:     string
+  telefone: string
+  email:    string
+}): Promise<{ ok: boolean; erro?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    await db.cliente.create({
+      data: {
+        nome:     dados.nome.trim(),
+        telefone: dados.telefone.trim() || null,
+        email:    dados.email.trim()    || null,
+        tenantId,
+      },
+    })
+    revalidatePath("/dashboard/clientes")
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, erro: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 export async function editarCliente(
   id: string,
   dados: { nome: string; telefone: string; email: string },

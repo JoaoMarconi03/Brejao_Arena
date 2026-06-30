@@ -42,15 +42,29 @@ export async function registrarCliente(formData: FormData) {
     },
   })
 
-  await db.cliente.create({
-    data: {
-      nome,
-      email,
-      telefone: telefone || null,
-      usuarioId: usuario.id,
-      tenantId: tenant.id,
-    },
-  })
+  // Se já existe um cliente manual com esse telefone, vincula em vez de duplicar
+  const clienteExistente = telefone
+    ? await db.cliente.findFirst({
+        where: { tenantId: tenant.id, telefone, usuarioId: null },
+      })
+    : null
+
+  if (clienteExistente) {
+    await db.cliente.update({
+      where: { id: clienteExistente.id },
+      data: { nome, email, usuarioId: usuario.id },
+    })
+  } else {
+    await db.cliente.create({
+      data: {
+        nome,
+        email,
+        telefone: telefone || null,
+        usuarioId: usuario.id,
+        tenantId: tenant.id,
+      },
+    })
+  }
 
   return { success: true }
 }
