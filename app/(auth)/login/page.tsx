@@ -12,12 +12,14 @@ export default async function LoginPage({
   const tenantNome = tenant?.nome ?? "Gestão de Arena"
 
   const voltarHref = slug === "brejao-arena" ? "/" : `/${slug}`
+  const variant = slug === "arena-votocel" ? "votocel" : "brejao"
 
   return (
     <LoginForm
       tenantNome={tenantNome}
       tenantSlug={slug}
       voltarHref={voltarHref}
+      variant={variant}
     />
   )
 }
