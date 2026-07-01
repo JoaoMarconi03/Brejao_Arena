@@ -61,7 +61,7 @@ export default function LoginPage() {
           <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-primary/30">
             <Trophy className="w-8 h-8 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Brejão Arena</h1>
+          <h1 className="text-2xl font-bold text-foreground">Gestão de Arena</h1>
           <p className="text-muted-foreground text-sm mt-1">Bem-vindo de volta</p>
         </div>
 

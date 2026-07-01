@@ -28,18 +28,28 @@ const navItems = [
   { href: "/dashboard/planos", label: "Planos Mensais", icon: Star, exact: false },
 ]
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function getIniciais(nome: string) {
+  return nome
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join("")
+}
+
+export function Sidebar({ onNavigate, tenantNome = "Gestão de Arena" }: { onNavigate?: () => void; tenantNome?: string }) {
   const pathname = usePathname()
+  const iniciais = getIniciais(tenantNome)
 
   return (
     <div className="flex flex-col h-full bg-sidebar border-r border-sidebar-border">
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-sidebar-border">
         <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center shrink-0">
-          <span className="text-primary-foreground font-bold text-sm">BA</span>
+          <span className="text-primary-foreground font-bold text-sm">{iniciais}</span>
         </div>
         <div>
-          <p className="text-sidebar-foreground font-bold text-sm">Brejão Arena</p>
+          <p className="text-sidebar-foreground font-bold text-sm">{tenantNome}</p>
           <p className="text-muted-foreground text-xs">Painel Admin</p>
         </div>
       </div>
