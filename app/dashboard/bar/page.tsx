@@ -3,13 +3,17 @@
 import { useState, useEffect, useTransition } from "react"
 import {
   Plus, Minus, Pencil, Package, ShoppingBag, Banknote, CreditCard,
-  Smartphone, Trash2, Search, X, BookOpen,
+  Smartphone, Trash2, Search, X, BookOpen, UserPlus, CheckCircle2,
+  ShoppingCart, ChevronRight,
 } from "lucide-react"
 import {
   buscarProdutos, criarProduto, atualizarProduto, excluirProduto,
   buscarVendas, criarVenda, atualizarVenda, excluirVenda,
   buscarContasFiado, criarVendaFiado, criarClienteEContaFiado,
 } from "./actions"
+import {
+  buscarContas, criarConta, lancarItem, registrarPagamento, buscarClientesParaFiado,
+} from "../fiado/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -19,32 +23,23 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
-// ─── tipos ──────────────────────────────────────────────────────────────────
+// ─── tipos ───────────────────────────────────────────────────────────────────
 
-type Produto = {
-  id: string; nome: string; preco: number
-  categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"; ativo: boolean
-}
-
-type ItemVenda = {
-  produtoId: string; nome: string; preco: number; quantidade: number
-}
-
+type Produto      = { id: string; nome: string; preco: number; categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"; ativo: boolean }
+type ItemVenda    = { produtoId: string; nome: string; preco: number; quantidade: number }
 type FormaPagamento = "DINHEIRO" | "PIX" | "CARTAO"
-type ModoPag = FormaPagamento | "FIADO"
+type ModoPag      = FormaPagamento | "FIADO"
+type Venda        = { id: string; cliente: string; itens: ItemVenda[]; total: number; formaPagamento: FormaPagamento; hora: string }
+type ContaBar     = { id: string; clienteNome: string; saldo: number }
 
-type Venda = {
-  id: string; cliente: string; itens: ItemVenda[]
-  total: number; formaPagamento: FormaPagamento; hora: string
-}
-
-type ContaFiado = { id: string; clienteNome: string; saldo: number }
+type Lancamento   = { id: string; descricao: string; valor: number; data: string }
+type Conta        = { id: string; clienteNome: string; clienteTelefone: string; diaFechamento: number; saldo: number; lancamentos: Lancamento[] }
+type ClienteFiado = { id: string; nome: string; telefone: string | null; temConta: boolean }
+type ProdFiado    = { id: string; nome: string; preco: number }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-const categoriaLabel: Record<string, string> = {
-  BEBIDA: "Bebida", ALIMENTO: "Alimento", OUTRO: "Outro",
-}
+const categoriaLabel: Record<string, string> = { BEBIDA: "Bebida", ALIMENTO: "Alimento", OUTRO: "Outro" }
 
 const pagamentoInfo: Record<FormaPagamento, { label: string; icon: React.ElementType; cor: string }> = {
   DINHEIRO: { label: "Dinheiro",   icon: Banknote,   cor: "text-green-400 bg-green-400/10"   },
@@ -67,14 +62,14 @@ function fmtHora(iso: string) {
 // ─── componente ──────────────────────────────────────────────────────────────
 
 export default function BarPage() {
-  // produtos
+  // ── produtos ──
   const [produtos, setProdutos]           = useState<Produto[]>([])
   const [dialogProduto, setDialogProduto] = useState(false)
   const [editando, setEditando]           = useState<Produto | null>(null)
   const [formProd, setFormProd]           = useState({ nome: "", preco: "", categoria: "BEBIDA" as Produto["categoria"] })
   const [salvandoProduto, setSalvando]    = useState(false)
 
-  // vendas
+  // ── vendas ──
   const [vendas, setVendas]               = useState<Venda[]>([])
   const [dialogVenda, setDialogVenda]     = useState(false)
   const [editandoVenda, setEditandoVenda] = useState<Venda | null>(null)
@@ -84,38 +79,60 @@ export default function BarPage() {
   const [erroVenda, setErroVenda]         = useState<string | null>(null)
   const [isPending, startTransition]      = useTransition()
 
-  // fiado
-  const [contasFiado, setContasFiado]       = useState<ContaFiado[]>([])
-  const [contaSel, setContaSel]             = useState<ContaFiado | null>(null)
-  const [buscaCliente, setBuscaCliente]     = useState("")
-  const [modoNovoCliente, setModoNovoCli]   = useState(false)
-  const [novoNome, setNovoNome]             = useState("")
-  const [novoTel, setNovoTel]               = useState("")
+  // ── venda fiado ──
+  const [contasBar, setContasBar]         = useState<ContaBar[]>([])
+  const [contaBarSel, setContaBarSel]     = useState<ContaBar | null>(null)
+  const [buscaClienteBar, setBuscaCliBar] = useState("")
+  const [modoNovoCliBar, setModoNovoCli]  = useState(false)
+  const [novoNomeBar, setNovoNomeBar]     = useState("")
+  const [novoTelBar, setNovoTelBar]       = useState("")
+  const [buscaProduto, setBuscaProduto]   = useState("")
 
-  // busca de produto
-  const [buscaProduto, setBuscaProduto]     = useState("")
-
-  // exclusões
+  // ── exclusões ──
   const [confirmarExcVenda, setConfExcVenda]     = useState<Venda | null>(null)
   const [confirmarExcProduto, setConfExcProduto] = useState<Produto | null>(null)
 
-  const totalVenda      = itensVenda.reduce((s, i) => s + i.preco * i.quantidade, 0)
-  const faturamentoDia  = vendas.reduce((s, v) => s + v.total, 0)
+  // ── aba fiado (gestão) ──
+  const [contas, setContas]                   = useState<Conta[]>([])
+  const [prodsFiado, setProdsFiado]           = useState<ProdFiado[]>([])
+  const [contaSel, setContaSel]               = useState<Conta | null>(null)
+  const [dialogNovaConta, setDialogNovaConta] = useState(false)
+  const [dialogLancamento, setDialogLancamento] = useState(false)
+  const [dialogPagamento, setDialogPagamento] = useState(false)
+  const [modoNovaConta, setModoNovaConta]     = useState<"existente" | "novo">("existente")
+  const [clientesFiado, setClientesFiado]     = useState<ClienteFiado[]>([])
+  const [buscaCliFiado, setBuscaCliFiado]     = useState("")
+  const [clienteSelFiado, setClienteSelFiado] = useState<ClienteFiado | null>(null)
+  const [erroNovaConta, setErroNovaConta]     = useState("")
+  const [formNova, setFormNova]               = useState({ nome: "", telefone: "", diaFechamento: "30" })
+  const [buscaProdFiado, setBuscaProdFiado]   = useState("")
+  const [produtoSelFiado, setProdutoSelFiado] = useState<ProdFiado | null>(null)
+  const [qtdFiado, setQtdFiado]               = useState("1")
+  const [formPag, setFormPag]                 = useState({ valor: "", observacao: "" })
+
+  const totalVenda     = itensVenda.reduce((s, i) => s + i.preco * i.quantidade, 0)
+  const faturamentoDia = vendas.reduce((s, v) => s + v.total, 0)
+  const totalPendente  = contas.reduce((s, c) => s + c.saldo, 0)
+  const qtd            = Math.max(1, parseInt(qtdFiado) || 1)
+  const valorPreview   = produtoSelFiado ? produtoSelFiado.preco * qtd : 0
 
   const produtosFiltrados = buscaProduto
     ? produtos.filter((p) => p.nome.toLowerCase().includes(buscaProduto.toLowerCase()))
     : []
 
-  const contasFiltradas = contasFiado.filter((c) =>
-    c.clienteNome.toLowerCase().includes(buscaCliente.toLowerCase())
-  )
+  async function recarregarContas() {
+    const lista = await buscarContas()
+    setContas(lista)
+  }
 
   useEffect(() => {
     buscarProdutos().then(setProdutos)
     buscarVendas().then(setVendas)
+    recarregarContas()
+    buscarProdutos().then((p) => setProdsFiado(p.map((x) => ({ id: x.id, nome: x.nome, preco: x.preco }))))
   }, [])
 
-  // ── handlers produtos ────────────────────────────────────────────────────
+  // ── handlers produtos ─────────────────────────────────────────────────────
 
   function abrirNovoProduto() {
     setEditando(null)
@@ -135,8 +152,7 @@ export default function BarPage() {
     const preco = parseFloat(formProd.preco)
     if (editando) {
       await atualizarProduto(editando.id, { nome: formProd.nome, preco, categoria: formProd.categoria })
-      setProdutos((prev) => prev.map((p) => p.id === editando.id
-        ? { ...p, nome: formProd.nome, preco, categoria: formProd.categoria } : p))
+      setProdutos((prev) => prev.map((p) => p.id === editando.id ? { ...p, nome: formProd.nome, preco, categoria: formProd.categoria } : p))
     } else {
       await criarProduto({ nome: formProd.nome, preco, categoria: formProd.categoria })
       buscarProdutos().then(setProdutos)
@@ -145,31 +161,24 @@ export default function BarPage() {
     setDialogProduto(false)
   }
 
-  // ── handlers vendas ──────────────────────────────────────────────────────
+  // ── handlers vendas ───────────────────────────────────────────────────────
 
-  function resetDialog() {
-    setItensVenda([])
-    setModoPag("DINHEIRO")
-    setClienteTexto("")
-    setErroVenda(null)
-    setBuscaProduto("")
-    setContaSel(null)
-    setBuscaCliente("")
-    setModoNovoCli(false)
-    setNovoNome("")
-    setNovoTel("")
+  function resetDialogVenda() {
+    setItensVenda([]); setModoPag("DINHEIRO"); setClienteTexto("")
+    setErroVenda(null); setBuscaProduto(""); setContaBarSel(null)
+    setBuscaCliBar(""); setModoNovoCli(false); setNovoNomeBar(""); setNovoTelBar("")
   }
 
   function abrirNovaVenda() {
     setEditandoVenda(null)
-    resetDialog()
-    buscarContasFiado().then(setContasFiado)
+    resetDialogVenda()
+    buscarContasFiado().then(setContasBar)
     setDialogVenda(true)
   }
 
   function abrirEditarVenda(v: Venda) {
     setEditandoVenda(v)
-    resetDialog()
+    resetDialogVenda()
     setClienteTexto(v.cliente)
     setModoPag(v.formaPagamento)
     setItensVenda(v.itens.map((i) => ({ ...i })))
@@ -187,7 +196,7 @@ export default function BarPage() {
     setBuscaProduto("")
   }
 
-  function ajustarQuantidade(produtoId: string, delta: number) {
+  function ajustarQtd(produtoId: string, delta: number) {
     setItensVenda((prev) =>
       prev.flatMap((i) => {
         if (i.produtoId !== produtoId) return [i]
@@ -200,34 +209,25 @@ export default function BarPage() {
   function confirmarVenda() {
     if (itensVenda.length === 0) return
     setErroVenda(null)
-
     startTransition(async () => {
       try {
         if (modoPag === "FIADO") {
-          let contaId = contaSel?.id
-
-          if (modoNovoCliente) {
-            if (!novoNome.trim()) { setErroVenda("Nome do cliente é obrigatório."); return }
-            const res = await criarClienteEContaFiado({ nome: novoNome, telefone: novoTel })
+          let contaId = contaBarSel?.id
+          if (modoNovoCliBar) {
+            if (!novoNomeBar.trim()) { setErroVenda("Nome é obrigatório."); return }
+            const res = await criarClienteEContaFiado({ nome: novoNomeBar, telefone: novoTelBar })
             if (!res.ok) { setErroVenda(res.erro ?? "Erro ao criar cliente."); return }
             contaId = res.contaId
-            buscarContasFiado().then(setContasFiado)
+            buscarContasFiado().then(setContasBar)
+            recarregarContas()
           }
-
           if (!contaId) { setErroVenda("Selecione um cliente para o fiado."); return }
           await criarVendaFiado({ contaId, itens: itensVenda })
+          recarregarContas()
         } else {
-          const payload = {
-            cliente: clienteTexto.trim(),
-            formaPagamento: modoPag as FormaPagamento,
-            total: totalVenda,
-            itens: itensVenda,
-          }
-          if (editandoVenda) {
-            await atualizarVenda(editandoVenda.id, payload)
-          } else {
-            await criarVenda(payload)
-          }
+          const payload = { cliente: clienteTexto.trim(), formaPagamento: modoPag as FormaPagamento, total: totalVenda, itens: itensVenda }
+          if (editandoVenda) { await atualizarVenda(editandoVenda.id, payload) }
+          else { await criarVenda(payload) }
           buscarVendas().then(setVendas)
         }
         setDialogVenda(false)
@@ -237,33 +237,83 @@ export default function BarPage() {
     })
   }
 
+  // ── handlers fiado (gestão) ───────────────────────────────────────────────
+
+  function abrirDialogNovaConta() {
+    setModoNovaConta("existente"); setBuscaCliFiado(""); setClienteSelFiado(null)
+    setErroNovaConta(""); setFormNova({ nome: "", telefone: "", diaFechamento: "30" })
+    buscarClientesParaFiado().then(setClientesFiado)
+    setDialogNovaConta(true)
+  }
+
+  function handleNovaConta() {
+    setErroNovaConta("")
+    const diaFechamento = Number(formNova.diaFechamento) || 30
+    if (modoNovaConta === "existente" && !clienteSelFiado) { setErroNovaConta("Selecione um cliente."); return }
+    if (modoNovaConta === "novo" && !formNova.nome.trim()) { setErroNovaConta("Nome é obrigatório."); return }
+    startTransition(async () => {
+      const res = await criarConta(
+        modoNovaConta === "existente"
+          ? { clienteId: clienteSelFiado!.id, diaFechamento }
+          : { nome: formNova.nome.trim(), telefone: formNova.telefone.trim(), diaFechamento }
+      )
+      if (!res.ok) { setErroNovaConta(res.erro ?? "Erro ao abrir conta."); return }
+      await recarregarContas()
+      setDialogNovaConta(false)
+    })
+  }
+
+  function handleLancamento() {
+    if (!contaSel || !produtoSelFiado) return
+    startTransition(async () => {
+      await lancarItem({ contaId: contaSel.id, produtoId: produtoSelFiado.id, quantidade: qtd })
+      await recarregarContas()
+      const lista = await buscarContas()
+      setContaSel(lista.find((c) => c.id === contaSel.id) ?? null)
+      setProdutoSelFiado(null); setBuscaProdFiado(""); setQtdFiado("1")
+      setDialogLancamento(false)
+    })
+  }
+
+  function handlePagamento() {
+    if (!contaSel) return
+    const valor = parseFloat(formPag.valor)
+    if (isNaN(valor) || valor <= 0) return
+    startTransition(async () => {
+      await registrarPagamento({ contaId: contaSel.id, valor, observacao: formPag.observacao.trim() || null })
+      await recarregarContas()
+      setContaSel(null); setFormPag({ valor: "", observacao: "" }); setDialogPagamento(false)
+    })
+  }
+
   const grupos = ["BEBIDA", "ALIMENTO", "OUTRO"] as const
 
-  // ── render ───────────────────────────────────────────────────────────────
+  // ─── render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="p-4 lg:p-6 space-y-5">
-      <h1 className="text-xl font-bold text-foreground">Bar</h1>
+      <h1 className="text-xl font-bold text-foreground">Bar & Fiado</h1>
 
       <Tabs defaultValue="vendas">
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="vendas" className="flex-1 sm:flex-none gap-2">
             <ShoppingBag className="w-4 h-4" />Vendas
           </TabsTrigger>
+          <TabsTrigger value="fiado" className="flex-1 sm:flex-none gap-2">
+            <BookOpen className="w-4 h-4" />Fiado
+          </TabsTrigger>
           <TabsTrigger value="produtos" className="flex-1 sm:flex-none gap-2">
             <Package className="w-4 h-4" />Produtos
           </TabsTrigger>
         </TabsList>
 
-        {/* ── ABA VENDAS ── */}
+        {/* ── ABA VENDAS ─────────────────────────────────────────────────── */}
         <TabsContent value="vendas" className="mt-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">
                 Faturamento hoje:{" "}
-                <span className="text-primary font-semibold">
-                  R$ {faturamentoDia.toFixed(2).replace(".", ",")}
-                </span>
+                <span className="text-primary font-semibold">R$ {faturamentoDia.toFixed(2).replace(".", ",")}</span>
               </p>
               <p className="text-xs text-muted-foreground">
                 {vendas.length} venda{vendas.length !== 1 ? "s" : ""} registrada{vendas.length !== 1 ? "s" : ""}
@@ -276,9 +326,7 @@ export default function BarPage() {
 
           <div className="space-y-2">
             {vendas.length === 0 && (
-              <div className="text-center py-10 text-muted-foreground text-sm">
-                Nenhuma venda registrada ainda.
-              </div>
+              <div className="text-center py-10 text-muted-foreground text-sm">Nenhuma venda registrada ainda.</div>
             )}
             {vendas.map((v) => {
               const pg = pagamentoInfo[v.formaPagamento]
@@ -288,9 +336,7 @@ export default function BarPage() {
                   <CardContent className="p-4 flex items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className="font-semibold text-sm text-foreground">
-                          {v.cliente || "Cliente não identificado"}
-                        </p>
+                        <p className="font-semibold text-sm text-foreground">{v.cliente || "Cliente não identificado"}</p>
                         <span className="text-xs text-muted-foreground">{fmtHora(v.hora)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
@@ -298,23 +344,15 @@ export default function BarPage() {
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <span className="text-base font-bold text-primary">
-                        R$ {v.total.toFixed(2).replace(".", ",")}
-                      </span>
+                      <span className="text-base font-bold text-primary">R$ {v.total.toFixed(2).replace(".", ",")}</span>
                       <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${pg.cor}`}>
                         <PgIcon className="w-3 h-3" />{pg.label}
                       </span>
                       <div className="flex gap-1 mt-0.5">
-                        <button
-                          onClick={() => abrirEditarVenda(v)}
-                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                        >
+                        <button onClick={() => abrirEditarVenda(v)} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => setConfExcVenda(v)}
-                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        >
+                        <button onClick={() => setConfExcVenda(v)} className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -326,12 +364,58 @@ export default function BarPage() {
           </div>
         </TabsContent>
 
-        {/* ── ABA PRODUTOS ── */}
+        {/* ── ABA FIADO ──────────────────────────────────────────────────── */}
+        <TabsContent value="fiado" className="mt-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">
+                Total pendente:{" "}
+                <span className="text-yellow-600 font-semibold">R$ {totalPendente.toFixed(2).replace(".", ",")}</span>
+              </p>
+              <p className="text-xs text-muted-foreground">{contas.length} conta{contas.length !== 1 ? "s" : ""} cadastrada{contas.length !== 1 ? "s" : ""}</p>
+            </div>
+            <Button size="sm" onClick={abrirDialogNovaConta} className="gap-2">
+              <UserPlus className="w-4 h-4" />Nova conta
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {contas.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground text-sm">Nenhuma conta de fiado cadastrada.</div>
+            )}
+            {contas.map((c) => (
+              <Card key={c.id} onClick={() => setContaSel(c)}
+                className="bg-card border-border hover:border-primary/30 transition-colors cursor-pointer">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <span className="text-primary font-bold text-sm">{c.clienteNome.charAt(0)}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground text-sm truncate">{c.clienteNome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {c.clienteTelefone || "Sem telefone"} · {c.lancamentos.length} lançamento{c.lancamentos.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {c.saldo === 0 ? (
+                      <span className="text-xs text-primary flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />Quitado
+                      </span>
+                    ) : (
+                      <span className="text-base font-bold text-yellow-600">R$ {c.saldo.toFixed(2).replace(".", ",")}</span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* ── ABA PRODUTOS ───────────────────────────────────────────────── */}
         <TabsContent value="produtos" className="mt-5 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              {produtos.filter((p) => p.ativo).length} produtos ativos
-            </p>
+            <p className="text-sm text-muted-foreground">{produtos.filter((p) => p.ativo).length} produtos ativos</p>
             <Button onClick={abrirNovoProduto} className="gap-2">
               <Plus className="w-4 h-4" />Novo produto
             </Button>
@@ -342,9 +426,7 @@ export default function BarPage() {
             if (lista.length === 0) return null
             return (
               <div key={cat}>
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  {categoriaLabel[cat]}
-                </h2>
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{categoriaLabel[cat]}</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {lista.map((p) => (
                     <Card key={p.id} className="bg-card border-border">
@@ -357,12 +439,10 @@ export default function BarPage() {
                           <p className="text-lg font-bold text-primary">R$ {p.preco.toFixed(2)}</p>
                         </div>
                         <div className="flex gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" onClick={() => abrirEditarProduto(p)}
-                            className="text-muted-foreground hover:text-foreground">
+                          <Button variant="ghost" size="icon" onClick={() => abrirEditarProduto(p)} className="text-muted-foreground hover:text-foreground">
                             <Pencil className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setConfExcProduto(p)}
-                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                          <Button variant="ghost" size="icon" onClick={() => setConfExcProduto(p)} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -376,226 +456,149 @@ export default function BarPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ── Dialog: Nova / Editar Venda ─────────────────────────────────────── */}
+      {/* ══════════ DIALOGS VENDAS ══════════ */}
+
+      {/* Nova / Editar Venda */}
       <Dialog open={dialogVenda} onOpenChange={setDialogVenda}>
         <DialogContent className="bg-card border-border sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-foreground">
-              {editandoVenda ? "Editar Venda" : "Registrar Venda"}
-            </DialogTitle>
+            <DialogTitle className="text-foreground">{editandoVenda ? "Editar Venda" : "Registrar Venda"}</DialogTitle>
           </DialogHeader>
-
           <div className="space-y-4 pt-1">
-
-            {/* ── Forma de pagamento ── */}
+            {/* Pagamento */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Forma de pagamento</Label>
               <div className="grid grid-cols-4 gap-1.5">
                 {modosPagamento.map(({ value, label, icon: Icon }) => (
-                  <button
-                    key={value}
-                    type="button"
+                  <button key={value} type="button"
                     disabled={!!editandoVenda && value === "FIADO"}
                     onClick={() => setModoPag(value)}
                     className={cn(
                       "flex flex-col items-center gap-1 py-2.5 rounded-lg border text-xs font-medium transition-all",
-                      modoPag === value
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                      modoPag === value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
                       !!editandoVenda && value === "FIADO" && "opacity-40 cursor-not-allowed"
                     )}
                   >
-                    <Icon className="w-4 h-4" />
-                    {label}
+                    <Icon className="w-4 h-4" />{label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* ── Cliente (só para modos pagos) ── */}
+            {/* Cliente (pago) */}
             {modoPag !== "FIADO" && (
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Cliente (opcional)</Label>
-                <Input
-                  placeholder="Nome do cliente"
-                  value={clienteTexto}
-                  onChange={(e) => setClienteTexto(e.target.value)}
-                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                />
+                <Input placeholder="Nome do cliente" value={clienteTexto} onChange={(e) => setClienteTexto(e.target.value)}
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
               </div>
             )}
 
-            {/* ── Seção Fiado ── */}
+            {/* Cliente (fiado) */}
             {modoPag === "FIADO" && (
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Cliente no fiado</Label>
-
-                {/* Toggle */}
                 <div className="flex gap-1 p-0.5 bg-secondary rounded-lg">
                   {["cadastrado", "novo"].map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => { setModoNovoCli(m === "novo"); setContaSel(null); setBuscaCliente("") }}
-                      className={cn(
-                        "flex-1 text-xs py-1.5 rounded-md font-medium transition-all",
-                        (m === "novo") === modoNovoCliente
-                          ? "bg-card text-foreground shadow-sm"
-                          : "text-muted-foreground"
-                      )}
+                    <button key={m} type="button"
+                      onClick={() => { setModoNovoCli(m === "novo"); setContaBarSel(null); setBuscaCliBar("") }}
+                      className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-all",
+                        (m === "novo") === modoNovoCliBar ? "bg-card text-foreground shadow-sm" : "text-muted-foreground")}
                     >
                       {m === "cadastrado" ? "Cliente cadastrado" : "Novo cliente"}
                     </button>
                   ))}
                 </div>
 
-                {/* Cliente cadastrado */}
-                {!modoNovoCliente && (
-                  <>
-                    {contaSel ? (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/30 rounded-lg">
-                        <span className="flex-1 text-sm font-medium text-primary">{contaSel.clienteNome}</span>
-                        <span className="text-xs text-muted-foreground">
-                          Saldo: R$ {contaSel.saldo.toFixed(2).replace(".", ",")}
-                        </span>
-                        <button onClick={() => setContaSel(null)} className="text-muted-foreground hover:text-foreground">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                {!modoNovoCliBar && (
+                  contaBarSel ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/30 rounded-lg">
+                      <span className="flex-1 text-sm font-medium text-primary">{contaBarSel.clienteNome}</span>
+                      <span className="text-xs text-muted-foreground">R$ {contaBarSel.saldo.toFixed(2).replace(".", ",")}</span>
+                      <button onClick={() => setContaBarSel(null)} className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <Input placeholder="Buscar cliente..." value={buscaClienteBar} onChange={(e) => setBuscaCliBar(e.target.value)}
+                          className="pl-8 bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
                       </div>
-                    ) : (
-                      <>
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                          <Input
-                            placeholder="Buscar cliente..."
-                            value={buscaCliente}
-                            onChange={(e) => setBuscaCliente(e.target.value)}
-                            className="pl-8 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                          />
-                        </div>
-                        {buscaCliente && (
-                          <div className="max-h-36 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                            {contasFiltradas.length === 0 ? (
-                              <p className="text-center text-xs text-muted-foreground py-3">
-                                Nenhum cliente encontrado.
-                              </p>
-                            ) : contasFiltradas.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => { setContaSel(c); setBuscaCliente("") }}
-                                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/60 transition-colors text-left"
-                              >
+                      {buscaClienteBar && (
+                        <div className="max-h-36 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                          {contasBar.filter((c) => c.clienteNome.toLowerCase().includes(buscaClienteBar.toLowerCase())).length === 0
+                            ? <p className="text-center text-xs text-muted-foreground py-3">Nenhum cliente encontrado.</p>
+                            : contasBar.filter((c) => c.clienteNome.toLowerCase().includes(buscaClienteBar.toLowerCase())).map((c) => (
+                              <button key={c.id} type="button" onClick={() => { setContaBarSel(c); setBuscaCliBar("") }}
+                                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/60 transition-colors text-left">
                                 <span className="text-sm font-medium text-foreground">{c.clienteNome}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  R$ {c.saldo.toFixed(2).replace(".", ",")}
-                                </span>
+                                <span className="text-xs text-muted-foreground">R$ {c.saldo.toFixed(2).replace(".", ",")}</span>
                               </button>
                             ))}
-                          </div>
-                        )}
-                        {!buscaCliente && contasFiado.length === 0 && (
-                          <p className="text-xs text-muted-foreground text-center py-1">
-                            Nenhuma conta fiado cadastrada.
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </>
+                        </div>
+                      )}
+                    </>
+                  )
                 )}
 
-                {/* Novo cliente */}
-                {modoNovoCliente && (
+                {modoNovoCliBar && (
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Nome *</Label>
-                      <Input
-                        placeholder="Nome completo"
-                        value={novoNome}
-                        onChange={(e) => setNovoNome(e.target.value)}
-                        className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                      />
+                      <Input placeholder="Nome completo" value={novoNomeBar} onChange={(e) => setNovoNomeBar(e.target.value)}
+                        className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Telefone</Label>
-                      <Input
-                        placeholder="(00) 00000-0000"
-                        value={novoTel}
-                        onChange={(e) => setNovoTel(e.target.value)}
-                        className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                      />
+                      <Input placeholder="(00) 00000-0000" value={novoTelBar} onChange={(e) => setNovoTelBar(e.target.value)}
+                        className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
                     </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* ── Busca de produto ── */}
+            {/* Busca produto */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Adicionar produto</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Digite o nome do produto..."
-                  value={buscaProduto}
-                  onChange={(e) => setBuscaProduto(e.target.value)}
-                  className="pl-8 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                />
+                <Input placeholder="Digite o nome do produto..." value={buscaProduto} onChange={(e) => setBuscaProduto(e.target.value)}
+                  className="pl-8 bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
               </div>
               {buscaProduto && (
                 <div className="max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                  {produtosFiltrados.length === 0 ? (
-                    <p className="text-center text-xs text-muted-foreground py-3">Produto não encontrado.</p>
-                  ) : produtosFiltrados.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => selecionarProduto(p.id)}
-                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/60 transition-colors text-left"
-                    >
-                      <span className="text-sm font-medium text-foreground">{p.nome}</span>
-                      <span className="text-sm text-primary font-semibold">
-                        R$ {p.preco.toFixed(2).replace(".", ",")}
-                      </span>
-                    </button>
-                  ))}
+                  {produtosFiltrados.length === 0
+                    ? <p className="text-center text-xs text-muted-foreground py-3">Produto não encontrado.</p>
+                    : produtosFiltrados.map((p) => (
+                      <button key={p.id} type="button" onClick={() => selecionarProduto(p.id)}
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/60 transition-colors text-left">
+                        <span className="text-sm font-medium text-foreground">{p.nome}</span>
+                        <span className="text-sm text-primary font-semibold">R$ {p.preco.toFixed(2).replace(".", ",")}</span>
+                      </button>
+                    ))}
                 </div>
               )}
             </div>
 
-            {/* ── Itens no carrinho ── */}
+            {/* Carrinho */}
             {itensVenda.length > 0 && (
               <div className="rounded-lg border border-border overflow-hidden">
                 <div className="divide-y divide-border">
                   {itensVenda.map((item) => (
                     <div key={item.produtoId} className="flex items-center gap-3 px-3 py-2.5 bg-secondary/40">
-                      <span className="text-sm text-foreground font-medium flex-1 min-w-0 truncate">
-                        {item.nome}
-                      </span>
+                      <span className="text-sm text-foreground font-medium flex-1 min-w-0 truncate">{item.nome}</span>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => ajustarQuantidade(item.produtoId, -1)}
-                          className="w-6 h-6 rounded-md bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
-                        >
+                        <button onClick={() => ajustarQtd(item.produtoId, -1)} className="w-6 h-6 rounded-md bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors">
                           <Minus className="w-3 h-3" />
                         </button>
-                        <span className="text-sm font-semibold text-foreground w-5 text-center">
-                          {item.quantidade}
-                        </span>
-                        <button
-                          onClick={() => ajustarQuantidade(item.produtoId, 1)}
-                          className="w-6 h-6 rounded-md bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
-                        >
+                        <span className="text-sm font-semibold text-foreground w-5 text-center">{item.quantidade}</span>
+                        <button onClick={() => ajustarQtd(item.produtoId, 1)} className="w-6 h-6 rounded-md bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors">
                           <Plus className="w-3 h-3" />
                         </button>
                       </div>
-                      <span className="text-sm font-semibold text-primary shrink-0 w-20 text-right">
-                        R$ {(item.preco * item.quantidade).toFixed(2).replace(".", ",")}
-                      </span>
-                      <button
-                        onClick={() => setItensVenda((p) => p.filter((i) => i.produtoId !== item.produtoId))}
-                        className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                      >
+                      <span className="text-sm font-semibold text-primary shrink-0 w-20 text-right">R$ {(item.preco * item.quantidade).toFixed(2).replace(".", ",")}</span>
+                      <button onClick={() => setItensVenda((p) => p.filter((i) => i.produtoId !== item.produtoId))} className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -603,166 +606,304 @@ export default function BarPage() {
                 </div>
                 <div className="flex items-center justify-between px-3 py-2.5 bg-primary/5 border-t border-border">
                   <span className="text-sm font-semibold text-foreground">Total</span>
-                  <span className="text-lg font-bold text-primary">
-                    R$ {totalVenda.toFixed(2).replace(".", ",")}
-                  </span>
+                  <span className="text-lg font-bold text-primary">R$ {totalVenda.toFixed(2).replace(".", ",")}</span>
                 </div>
               </div>
             )}
+            {itensVenda.length === 0 && <p className="text-center text-xs text-muted-foreground py-1">Digite acima para buscar e adicionar produtos.</p>}
 
-            {itensVenda.length === 0 && (
-              <p className="text-center text-xs text-muted-foreground py-1">
-                Digite acima para buscar e adicionar produtos.
-              </p>
-            )}
-
-            {erroVenda && (
-              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
-                {erroVenda}
-              </p>
-            )}
+            {erroVenda && <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">{erroVenda}</p>}
 
             <div className="flex gap-2 pt-1">
-              <Button variant="outline" className="flex-1 border-border"
-                onClick={() => setDialogVenda(false)} disabled={isPending}>
-                Cancelar
-              </Button>
-              <Button
-                className="flex-1"
-                disabled={itensVenda.length === 0 || isPending}
-                onClick={confirmarVenda}
-              >
-                {isPending
-                  ? "Salvando…"
-                  : modoPag === "FIADO"
-                    ? `Lançar no Fiado — R$ ${totalVenda.toFixed(2).replace(".", ",")}`
-                    : `${editandoVenda ? "Salvar" : "Confirmar"} — R$ ${totalVenda.toFixed(2).replace(".", ",")}`
-                }
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogVenda(false)} disabled={isPending}>Cancelar</Button>
+              <Button className="flex-1" disabled={itensVenda.length === 0 || isPending} onClick={confirmarVenda}>
+                {isPending ? "Salvando…" : modoPag === "FIADO"
+                  ? `Lançar no Fiado — R$ ${totalVenda.toFixed(2).replace(".", ",")}`
+                  : `${editandoVenda ? "Salvar" : "Confirmar"} — R$ ${totalVenda.toFixed(2).replace(".", ",")}`}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Confirmar exclusão de venda ── */}
+      {/* Excluir venda */}
       <Dialog open={!!confirmarExcVenda} onOpenChange={(o) => !o && setConfExcVenda(null)}>
         <DialogContent className="bg-card border-border sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Excluir venda?</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="text-foreground">Excluir venda?</DialogTitle></DialogHeader>
           {confirmarExcVenda && (
             <div className="space-y-4 pt-1">
               <p className="text-sm text-muted-foreground">
-                Venda de{" "}
-                <span className="text-foreground font-medium">
-                  {confirmarExcVenda.cliente || "cliente não identificado"}
-                </span>{" "}
-                no valor de{" "}
-                <span className="text-primary font-semibold">
-                  R$ {confirmarExcVenda.total.toFixed(2).replace(".", ",")}
-                </span>
-                . Essa ação não pode ser desfeita.
+                Venda de <span className="text-foreground font-medium">{confirmarExcVenda.cliente || "cliente não identificado"}</span> no valor de <span className="text-primary font-semibold">R$ {confirmarExcVenda.total.toFixed(2).replace(".", ",")}</span>. Essa ação não pode ser desfeita.
               </p>
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfExcVenda(null)}>
-                  Cancelar
-                </Button>
-                <Button variant="destructive" className="flex-1"
-                  onClick={async () => {
-                    await excluirVenda(confirmarExcVenda.id)
-                    setVendas((p) => p.filter((v) => v.id !== confirmarExcVenda.id))
-                    setConfExcVenda(null)
-                  }}>
-                  Excluir
-                </Button>
+                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfExcVenda(null)}>Cancelar</Button>
+                <Button variant="destructive" className="flex-1" onClick={async () => { await excluirVenda(confirmarExcVenda.id); setVendas((p) => p.filter((v) => v.id !== confirmarExcVenda.id)); setConfExcVenda(null) }}>Excluir</Button>
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Confirmar exclusão de produto ── */}
+      {/* ══════════ DIALOGS FIADO ══════════ */}
+
+      {/* Nova conta */}
+      <Dialog open={dialogNovaConta} onOpenChange={(o) => { if (!isPending) setDialogNovaConta(o) }}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader><DialogTitle className="text-foreground">Abrir conta no fiado</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="flex rounded-lg bg-secondary p-1 gap-1">
+              {(["existente", "novo"] as const).map((m) => (
+                <button key={m} onClick={() => { setModoNovaConta(m); setErroNovaConta("") }}
+                  className={cn("flex-1 text-sm py-1.5 rounded-md font-medium transition-colors",
+                    modoNovaConta === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                  {m === "existente" ? "Cliente cadastrado" : "Novo cliente"}
+                </button>
+              ))}
+            </div>
+
+            {modoNovaConta === "existente" && (
+              <div className="space-y-2">
+                {clienteSelFiado ? (
+                  <div className="flex items-center justify-between rounded-lg bg-primary/10 border border-primary/30 px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{clienteSelFiado.nome}</p>
+                      {clienteSelFiado.telefone && <p className="text-xs text-muted-foreground">{clienteSelFiado.telefone}</p>}
+                    </div>
+                    <button onClick={() => { setClienteSelFiado(null); setBuscaCliFiado("") }} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                      <Input placeholder="Buscar por nome ou telefone..." value={buscaCliFiado} onChange={(e) => setBuscaCliFiado(e.target.value)}
+                        className="bg-secondary border-border text-foreground placeholder:text-muted-foreground pl-9" />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                      {clientesFiado.filter((c) => { const q = buscaCliFiado.toLowerCase(); return !q || c.nome.toLowerCase().includes(q) || (c.telefone ?? "").includes(q) }).map((c) => (
+                        <button key={c.id} disabled={c.temConta} onClick={() => setClienteSelFiado(c)}
+                          className={cn("w-full text-left px-3 py-2.5 transition-colors", c.temConta ? "opacity-40 cursor-not-allowed bg-secondary/30" : "hover:bg-secondary/60")}>
+                          <p className="text-sm font-medium text-foreground">{c.nome}</p>
+                          <p className="text-xs text-muted-foreground">{c.telefone ?? "Sem telefone"}{c.temConta && " · já possui conta"}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {modoNovaConta === "novo" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Nome *</Label>
+                  <Input placeholder="Nome do cliente" value={formNova.nome} onChange={(e) => setFormNova((f) => ({ ...f, nome: e.target.value }))}
+                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Telefone</Label>
+                  <Input type="tel" placeholder="(00) 00000-0000" value={formNova.telefone} onChange={(e) => setFormNova((f) => ({ ...f, telefone: e.target.value }))}
+                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
+                </div>
+              </>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Dia de fechamento</Label>
+              <Input type="number" min="1" max="31" placeholder="30" value={formNova.diaFechamento}
+                onChange={(e) => setFormNova((f) => ({ ...f, diaFechamento: e.target.value }))}
+                className="bg-secondary border-border text-foreground" />
+            </div>
+
+            {erroNovaConta && <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">{erroNovaConta}</p>}
+
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogNovaConta(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={handleNovaConta} disabled={isPending}>{isPending ? "Salvando..." : "Abrir conta"}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detalhe da conta */}
+      <Dialog open={!!contaSel && !dialogLancamento && !dialogPagamento} onOpenChange={(o) => !o && setContaSel(null)}>
+        {contaSel && (
+          <DialogContent className="bg-card border-border sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-foreground flex items-center justify-between pr-6">
+                <div>
+                  <span>{contaSel.clienteNome}</span>
+                  {contaSel.clienteTelefone && <p className="text-xs text-muted-foreground font-normal mt-0.5">{contaSel.clienteTelefone}</p>}
+                </div>
+                <span className={contaSel.saldo === 0 ? "text-primary text-base" : "text-yellow-600 text-lg"}>
+                  {contaSel.saldo === 0 ? "Quitado" : `R$ ${contaSel.saldo.toFixed(2).replace(".", ",")}`}
+                </span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {contaSel.lancamentos.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Sem lançamentos.</p>}
+              {contaSel.lancamentos.map((l) => (
+                <div key={l.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                  <div>
+                    <p className="text-sm text-foreground">{l.descricao}</p>
+                    <p className="text-xs text-muted-foreground">{l.data}</p>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">R$ {l.valor.toFixed(2).replace(".", ",")}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 border-border gap-2"
+                onClick={() => { setProdutoSelFiado(null); setBuscaProdFiado(""); setQtdFiado("1"); setDialogLancamento(true) }}>
+                <ShoppingCart className="w-4 h-4" />Lançar item
+              </Button>
+              <Button className="flex-1 gap-2" disabled={contaSel.saldo === 0}
+                onClick={() => { setFormPag({ valor: String(contaSel.saldo.toFixed(2)), observacao: "" }); setDialogPagamento(true) }}>
+                <CheckCircle2 className="w-4 h-4" />Receber
+              </Button>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* Lançar item */}
+      <Dialog open={dialogLancamento} onOpenChange={(o) => { if (!o) setDialogLancamento(false) }}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader><DialogTitle className="text-foreground">Lançar item — {contaSel?.clienteNome}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Produto</Label>
+              {produtoSelFiado ? (
+                <div className="flex items-center justify-between rounded-lg bg-primary/10 border border-primary/30 px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{produtoSelFiado.nome}</p>
+                    <p className="text-xs text-muted-foreground">R$ {produtoSelFiado.preco.toFixed(2).replace(".", ",")} / un.</p>
+                  </div>
+                  <button onClick={() => { setProdutoSelFiado(null); setBuscaProdFiado("") }} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    <Input placeholder="Buscar produto..." value={buscaProdFiado} onChange={(e) => setBuscaProdFiado(e.target.value)}
+                      className="bg-secondary border-border text-foreground placeholder:text-muted-foreground pl-9" />
+                  </div>
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                    {prodsFiado.filter((p) => !buscaProdFiado || p.nome.toLowerCase().includes(buscaProdFiado.toLowerCase())).map((p) => (
+                      <button key={p.id} onClick={() => setProdutoSelFiado(p)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-secondary/60 transition-colors flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground">{p.nome}</span>
+                        <span className="text-sm text-primary font-semibold">R$ {p.preco.toFixed(2).replace(".", ",")}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {produtoSelFiado && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Quantidade</Label>
+                  <Input type="number" min="1" value={qtdFiado} onChange={(e) => setQtdFiado(e.target.value)}
+                    className="bg-secondary border-border text-foreground" />
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-primary/5 border border-primary/20 px-3 py-2.5">
+                  <span className="text-sm text-muted-foreground">Total</span>
+                  <span className="text-base font-bold text-primary">R$ {valorPreview.toFixed(2).replace(".", ",")}</span>
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogLancamento(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={handleLancamento} disabled={!produtoSelFiado || isPending}>
+                {isPending ? "Salvando..." : "Lançar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar pagamento */}
+      <Dialog open={dialogPagamento} onOpenChange={(o) => { if (!o) setDialogPagamento(false) }}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader><DialogTitle className="text-foreground">Receber pagamento — {contaSel?.clienteNome}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Valor recebido (R$)</Label>
+              <Input type="number" step="0.50" min="0.01" value={formPag.valor} onChange={(e) => setFormPag((f) => ({ ...f, valor: e.target.value }))}
+                className="bg-secondary border-border text-foreground" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Observação</Label>
+              <Input placeholder="Ex: pago via pix" value={formPag.observacao} onChange={(e) => setFormPag((f) => ({ ...f, observacao: e.target.value }))}
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogPagamento(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={handlePagamento} disabled={!formPag.valor || isPending}>
+                {isPending ? "Salvando..." : "Confirmar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════ DIALOGS PRODUTOS ══════════ */}
+
+      {/* Excluir produto */}
       <Dialog open={!!confirmarExcProduto} onOpenChange={(o) => !o && setConfExcProduto(null)}>
         <DialogContent className="bg-card border-border sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Excluir produto?</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="text-foreground">Excluir produto?</DialogTitle></DialogHeader>
           {confirmarExcProduto && (
             <div className="space-y-4 pt-1">
               <p className="text-sm text-muted-foreground">
-                O produto{" "}
-                <span className="text-foreground font-medium">{confirmarExcProduto.nome}</span>{" "}
-                será removido do cardápio. Vendas anteriores não serão afetadas.
+                O produto <span className="text-foreground font-medium">{confirmarExcProduto.nome}</span> será removido do cardápio. Vendas anteriores não serão afetadas.
               </p>
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfExcProduto(null)}>
-                  Cancelar
-                </Button>
-                <Button variant="destructive" className="flex-1"
-                  onClick={async () => {
-                    await excluirProduto(confirmarExcProduto.id)
-                    setProdutos((p) => p.filter((x) => x.id !== confirmarExcProduto.id))
-                    setConfExcProduto(null)
-                  }}>
-                  Excluir
-                </Button>
+                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfExcProduto(null)}>Cancelar</Button>
+                <Button variant="destructive" className="flex-1" onClick={async () => { await excluirProduto(confirmarExcProduto.id); setProdutos((p) => p.filter((x) => x.id !== confirmarExcProduto.id)); setConfExcProduto(null) }}>Excluir</Button>
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Produto ── */}
+      {/* Novo / Editar produto */}
       <Dialog open={dialogProduto} onOpenChange={setDialogProduto}>
         <DialogContent className="bg-card border-border sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">
-              {editando ? "Editar Produto" : "Novo Produto"}
-            </DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="text-foreground">{editando ? "Editar Produto" : "Novo Produto"}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Nome do produto</Label>
-              <Input
-                placeholder="Ex: Cerveja 600ml"
-                value={formProd.nome}
-                onChange={(e) => setFormProd((f) => ({ ...f, nome: e.target.value }))}
-                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-              />
+              <Input placeholder="Ex: Cerveja 600ml" value={formProd.nome} onChange={(e) => setFormProd((f) => ({ ...f, nome: e.target.value }))}
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Preço (R$)</Label>
-                <Input
-                  type="number" step="0.50" placeholder="0,00"
-                  value={formProd.preco}
-                  onChange={(e) => setFormProd((f) => ({ ...f, preco: e.target.value }))}
-                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                />
+                <Input type="number" step="0.50" placeholder="0,00" value={formProd.preco} onChange={(e) => setFormProd((f) => ({ ...f, preco: e.target.value }))}
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Categoria</Label>
-                <Select
-                  value={formProd.categoria}
-                  onValueChange={(v) => setFormProd((f) => ({ ...f, categoria: v as Produto["categoria"] }))}
-                >
-                  <SelectTrigger className="bg-secondary border-border text-foreground">
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={formProd.categoria} onValueChange={(v) => setFormProd((f) => ({ ...f, categoria: v as Produto["categoria"] }))}>
+                  <SelectTrigger className="bg-secondary border-border text-foreground"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-popover border-border">
-                    <SelectItem value="BEBIDA"   className="text-foreground">Bebida</SelectItem>
+                    <SelectItem value="BEBIDA" className="text-foreground">Bebida</SelectItem>
                     <SelectItem value="ALIMENTO" className="text-foreground">Alimento</SelectItem>
-                    <SelectItem value="OUTRO"    className="text-foreground">Outro</SelectItem>
+                    <SelectItem value="OUTRO" className="text-foreground">Outro</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="flex gap-2 pt-1">
-              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogProduto(false)}>
-                Cancelar
-              </Button>
-              <Button className="flex-1" onClick={salvarProduto}
-                disabled={!formProd.nome || !formProd.preco || salvandoProduto}>
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogProduto(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={salvarProduto} disabled={!formProd.nome || !formProd.preco || salvandoProduto}>
                 {salvandoProduto ? "Salvando..." : "Salvar"}
               </Button>
             </div>
