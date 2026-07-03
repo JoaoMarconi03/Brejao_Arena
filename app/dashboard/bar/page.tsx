@@ -62,6 +62,9 @@ function fmtHora(iso: string) {
 // ─── componente ──────────────────────────────────────────────────────────────
 
 export default function BarPage() {
+  // ── tab ──
+  const [abaAtiva, setAbaAtiva] = useState("vendas")
+
   // ── produtos ──
   const [produtos, setProdutos]           = useState<Produto[]>([])
   const [dialogProduto, setDialogProduto] = useState(false)
@@ -290,11 +293,13 @@ export default function BarPage() {
         formaPagamento: formPag.formaPagamento,
       })
       await recarregarContas()
-      buscarVendas().then(setVendas)
-      buscarTotalMes().then(setTotalMes)
+      const [novasVendas, novoTotalMes] = await Promise.all([buscarVendas(), buscarTotalMes()])
+      setVendas(novasVendas)
+      setTotalMes(novoTotalMes)
       setContaSel(null)
       setFormPag({ valor: "", observacao: "", formaPagamento: "DINHEIRO" })
       setDialogPagamento(false)
+      setAbaAtiva("vendas")
     })
   }
 
@@ -306,7 +311,7 @@ export default function BarPage() {
     <div className="p-4 lg:p-6 space-y-5">
       <h1 className="text-xl font-bold text-foreground">Bar & Fiado</h1>
 
-      <Tabs defaultValue="vendas">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="vendas" className="flex-1 sm:flex-none gap-2">
             <ShoppingBag className="w-4 h-4" />Vendas
