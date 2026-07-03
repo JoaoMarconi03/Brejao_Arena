@@ -1,74 +1,63 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
-import { Plus, Minus, Pencil, Package, ShoppingBag, Banknote, CreditCard, Smartphone, Trash2 } from "lucide-react"
-import { buscarProdutos, criarProduto, atualizarProduto, excluirProduto, buscarVendas, criarVenda, atualizarVenda, excluirVenda } from "./actions"
+import {
+  Plus, Minus, Pencil, Package, ShoppingBag, Banknote, CreditCard,
+  Smartphone, Trash2, Search, X, BookOpen,
+} from "lucide-react"
+import {
+  buscarProdutos, criarProduto, atualizarProduto, excluirProduto,
+  buscarVendas, criarVenda, atualizarVenda, excluirVenda,
+  buscarContasFiado, criarVendaFiado, criarClienteEContaFiado,
+} from "./actions"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 
 // ─── tipos ──────────────────────────────────────────────────────────────────
 
 type Produto = {
-  id: string
-  nome: string
-  preco: number
-  categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"
-  ativo: boolean
+  id: string; nome: string; preco: number
+  categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"; ativo: boolean
 }
 
 type ItemVenda = {
-  produtoId: string
-  nome: string
-  preco: number
-  quantidade: number
+  produtoId: string; nome: string; preco: number; quantidade: number
 }
 
 type FormaPagamento = "DINHEIRO" | "PIX" | "CARTAO"
+type ModoPag = FormaPagamento | "FIADO"
 
 type Venda = {
-  id: string
-  cliente: string
-  itens: ItemVenda[]
-  total: number
-  formaPagamento: FormaPagamento
-  hora: string
+  id: string; cliente: string; itens: ItemVenda[]
+  total: number; formaPagamento: FormaPagamento; hora: string
 }
 
+type ContaFiado = { id: string; clienteNome: string; saldo: number }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-const categoriaBadge: Record<string, string> = {
-  BEBIDA:   "text-blue-400 border-blue-400/30",
-  ALIMENTO: "text-orange-400 border-orange-400/30",
-  OUTRO:    "text-muted-foreground border-border",
-}
 
 const categoriaLabel: Record<string, string> = {
   BEBIDA: "Bebida", ALIMENTO: "Alimento", OUTRO: "Outro",
 }
 
 const pagamentoInfo: Record<FormaPagamento, { label: string; icon: React.ElementType; cor: string }> = {
-  DINHEIRO: { label: "Dinheiro",   icon: Banknote,    cor: "text-green-400 bg-green-400/10"  },
-  PIX:      { label: "PIX",        icon: Smartphone,  cor: "text-sky-400 bg-sky-400/10"      },
-  CARTAO:   { label: "Cartão/Máq", icon: CreditCard,  cor: "text-purple-400 bg-purple-400/10" },
+  DINHEIRO: { label: "Dinheiro",   icon: Banknote,   cor: "text-green-400 bg-green-400/10"   },
+  PIX:      { label: "PIX",        icon: Smartphone, cor: "text-sky-400 bg-sky-400/10"        },
+  CARTAO:   { label: "Cartão/Máq", icon: CreditCard, cor: "text-purple-400 bg-purple-400/10" },
 }
+
+const modosPagamento: { value: ModoPag; label: string; icon: React.ElementType }[] = [
+  { value: "DINHEIRO", label: "Dinheiro", icon: Banknote   },
+  { value: "PIX",      label: "PIX",      icon: Smartphone },
+  { value: "CARTAO",   label: "Cartão",   icon: CreditCard },
+  { value: "FIADO",    label: "Fiado",    icon: BookOpen   },
+]
 
 function fmtHora(iso: string) {
   const d = new Date(iso)
@@ -79,35 +68,54 @@ function fmtHora(iso: string) {
 
 export default function BarPage() {
   // produtos
-  const [produtos, setProdutos] = useState<Produto[]>([])
+  const [produtos, setProdutos]           = useState<Produto[]>([])
   const [dialogProduto, setDialogProduto] = useState(false)
-  const [editando, setEditando] = useState<Produto | null>(null)
-  const [formProd, setFormProd] = useState({ nome: "", preco: "", categoria: "BEBIDA" as Produto["categoria"] })
-  const [salvandoProduto, setSalvandoProduto] = useState(false)
+  const [editando, setEditando]           = useState<Produto | null>(null)
+  const [formProd, setFormProd]           = useState({ nome: "", preco: "", categoria: "BEBIDA" as Produto["categoria"] })
+  const [salvandoProduto, setSalvando]    = useState(false)
+
+  // vendas
+  const [vendas, setVendas]               = useState<Venda[]>([])
+  const [dialogVenda, setDialogVenda]     = useState(false)
+  const [editandoVenda, setEditandoVenda] = useState<Venda | null>(null)
+  const [itensVenda, setItensVenda]       = useState<ItemVenda[]>([])
+  const [modoPag, setModoPag]             = useState<ModoPag>("DINHEIRO")
+  const [clienteTexto, setClienteTexto]   = useState("")
+  const [erroVenda, setErroVenda]         = useState<string | null>(null)
+  const [isPending, startTransition]      = useTransition()
+
+  // fiado
+  const [contasFiado, setContasFiado]       = useState<ContaFiado[]>([])
+  const [contaSel, setContaSel]             = useState<ContaFiado | null>(null)
+  const [buscaCliente, setBuscaCliente]     = useState("")
+  const [modoNovoCliente, setModoNovoCli]   = useState(false)
+  const [novoNome, setNovoNome]             = useState("")
+  const [novoTel, setNovoTel]               = useState("")
+
+  // busca de produto
+  const [buscaProduto, setBuscaProduto]     = useState("")
+
+  // exclusões
+  const [confirmarExcVenda, setConfExcVenda]     = useState<Venda | null>(null)
+  const [confirmarExcProduto, setConfExcProduto] = useState<Produto | null>(null)
+
+  const totalVenda      = itensVenda.reduce((s, i) => s + i.preco * i.quantidade, 0)
+  const faturamentoDia  = vendas.reduce((s, v) => s + v.total, 0)
+
+  const produtosFiltrados = buscaProduto
+    ? produtos.filter((p) => p.nome.toLowerCase().includes(buscaProduto.toLowerCase()))
+    : []
+
+  const contasFiltradas = contasFiado.filter((c) =>
+    c.clienteNome.toLowerCase().includes(buscaCliente.toLowerCase())
+  )
 
   useEffect(() => {
     buscarProdutos().then(setProdutos)
     buscarVendas().then(setVendas)
   }, [])
 
-  // vendas
-  const [vendas, setVendas] = useState<Venda[]>([])
-  const [dialogVenda, setDialogVenda] = useState(false)
-  const [editandoVenda, setEditandoVenda] = useState<Venda | null>(null)
-  const [formVenda, setFormVenda] = useState({
-    cliente: "",
-    formaPagamento: "DINHEIRO" as FormaPagamento,
-  })
-  const [itensVenda, setItensVenda] = useState<ItemVenda[]>([])
-  const [confirmarExclusao, setConfirmarExclusao]           = useState<Venda | null>(null)
-  const [confirmarExclusaoProduto, setConfirmarExcProduto]  = useState<Produto | null>(null)
-  const [erroVenda, setErroVenda] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-
-  const totalVenda = itensVenda.reduce((s, i) => s + i.preco * i.quantidade, 0)
-  const faturamentoDia = vendas.reduce((s, v) => s + v.total, 0)
-
-  // ── handlers produtos ──
+  // ── handlers produtos ────────────────────────────────────────────────────
 
   function abrirNovoProduto() {
     setEditando(null)
@@ -123,50 +131,49 @@ export default function BarPage() {
 
   async function salvarProduto() {
     if (!formProd.nome || !formProd.preco) return
-    setSalvandoProduto(true)
+    setSalvando(true)
     const preco = parseFloat(formProd.preco)
     if (editando) {
       await atualizarProduto(editando.id, { nome: formProd.nome, preco, categoria: formProd.categoria })
       setProdutos((prev) => prev.map((p) => p.id === editando.id
-        ? { ...p, nome: formProd.nome, preco, categoria: formProd.categoria }
-        : p))
+        ? { ...p, nome: formProd.nome, preco, categoria: formProd.categoria } : p))
     } else {
       await criarProduto({ nome: formProd.nome, preco, categoria: formProd.categoria })
-      const lista = await buscarProdutos()
-      setProdutos(lista)
+      buscarProdutos().then(setProdutos)
     }
-    setSalvandoProduto(false)
+    setSalvando(false)
     setDialogProduto(false)
   }
 
-  // ── handlers vendas ──
+  // ── handlers vendas ──────────────────────────────────────────────────────
+
+  function resetDialog() {
+    setItensVenda([])
+    setModoPag("DINHEIRO")
+    setClienteTexto("")
+    setErroVenda(null)
+    setBuscaProduto("")
+    setContaSel(null)
+    setBuscaCliente("")
+    setModoNovoCli(false)
+    setNovoNome("")
+    setNovoTel("")
+  }
 
   function abrirNovaVenda() {
     setEditandoVenda(null)
-    setFormVenda({ cliente: "", formaPagamento: "DINHEIRO" })
-    setItensVenda([])
-    setErroVenda(null)
+    resetDialog()
+    buscarContasFiado().then(setContasFiado)
     setDialogVenda(true)
   }
 
   function abrirEditarVenda(v: Venda) {
     setEditandoVenda(v)
-    setFormVenda({ cliente: v.cliente, formaPagamento: v.formaPagamento })
+    resetDialog()
+    setClienteTexto(v.cliente)
+    setModoPag(v.formaPagamento)
     setItensVenda(v.itens.map((i) => ({ ...i })))
-    setErroVenda(null)
     setDialogVenda(true)
-  }
-
-  async function handleExcluirVenda(id: string) {
-    await excluirVenda(id)
-    setVendas((prev) => prev.filter((v) => v.id !== id))
-    setConfirmarExclusao(null)
-  }
-
-  async function handleExcluirProduto(id: string) {
-    await excluirProduto(id)
-    setProdutos((prev) => prev.filter((p) => p.id !== id))
-    setConfirmarExcProduto(null)
   }
 
   function selecionarProduto(produtoId: string) {
@@ -177,6 +184,7 @@ export default function BarPage() {
       if (existe) return prev.map((i) => i.produtoId === prod.id ? { ...i, quantidade: i.quantidade + 1 } : i)
       return [...prev, { produtoId: prod.id, nome: prod.nome, preco: prod.preco, quantidade: 1 }]
     })
+    setBuscaProduto("")
   }
 
   function ajustarQuantidade(produtoId: string, delta: number) {
@@ -189,37 +197,49 @@ export default function BarPage() {
     )
   }
 
-  function removerItem(produtoId: string) {
-    setItensVenda((prev) => prev.filter((i) => i.produtoId !== produtoId))
-  }
-
   function confirmarVenda() {
     if (itensVenda.length === 0) return
     setErroVenda(null)
-    const payload = {
-      cliente: formVenda.cliente.trim(),
-      formaPagamento: formVenda.formaPagamento,
-      total: totalVenda,
-      itens: itensVenda,
-    }
+
     startTransition(async () => {
       try {
-        if (editandoVenda) {
-          await atualizarVenda(editandoVenda.id, payload)
+        if (modoPag === "FIADO") {
+          let contaId = contaSel?.id
+
+          if (modoNovoCliente) {
+            if (!novoNome.trim()) { setErroVenda("Nome do cliente é obrigatório."); return }
+            const res = await criarClienteEContaFiado({ nome: novoNome, telefone: novoTel })
+            if (!res.ok) { setErroVenda(res.erro ?? "Erro ao criar cliente."); return }
+            contaId = res.contaId
+            buscarContasFiado().then(setContasFiado)
+          }
+
+          if (!contaId) { setErroVenda("Selecione um cliente para o fiado."); return }
+          await criarVendaFiado({ contaId, itens: itensVenda })
         } else {
-          await criarVenda(payload)
+          const payload = {
+            cliente: clienteTexto.trim(),
+            formaPagamento: modoPag as FormaPagamento,
+            total: totalVenda,
+            itens: itensVenda,
+          }
+          if (editandoVenda) {
+            await atualizarVenda(editandoVenda.id, payload)
+          } else {
+            await criarVenda(payload)
+          }
+          buscarVendas().then(setVendas)
         }
         setDialogVenda(false)
-        buscarVendas().then(setVendas).catch(console.error)
       } catch (e: any) {
-        const msg = e?.message ?? String(e)
-        setErroVenda(`Erro: ${msg}`)
-        console.error(e)
+        setErroVenda(`Erro: ${e?.message ?? String(e)}`)
       }
     })
   }
 
   const grupos = ["BEBIDA", "ALIMENTO", "OUTRO"] as const
+
+  // ── render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="p-4 lg:p-6 space-y-5">
@@ -228,12 +248,10 @@ export default function BarPage() {
       <Tabs defaultValue="vendas">
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="vendas" className="flex-1 sm:flex-none gap-2">
-            <ShoppingBag className="w-4 h-4" />
-            Vendas
+            <ShoppingBag className="w-4 h-4" />Vendas
           </TabsTrigger>
           <TabsTrigger value="produtos" className="flex-1 sm:flex-none gap-2">
-            <Package className="w-4 h-4" />
-            Produtos
+            <Package className="w-4 h-4" />Produtos
           </TabsTrigger>
         </TabsList>
 
@@ -247,11 +265,12 @@ export default function BarPage() {
                   R$ {faturamentoDia.toFixed(2).replace(".", ",")}
                 </span>
               </p>
-              <p className="text-xs text-muted-foreground">{vendas.length} venda{vendas.length !== 1 ? "s" : ""} registrada{vendas.length !== 1 ? "s" : ""}</p>
+              <p className="text-xs text-muted-foreground">
+                {vendas.length} venda{vendas.length !== 1 ? "s" : ""} registrada{vendas.length !== 1 ? "s" : ""}
+              </p>
             </div>
             <Button onClick={abrirNovaVenda} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Nova venda
+              <Plus className="w-4 h-4" />Nova venda
             </Button>
           </div>
 
@@ -283,21 +302,18 @@ export default function BarPage() {
                         R$ {v.total.toFixed(2).replace(".", ",")}
                       </span>
                       <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${pg.cor}`}>
-                        <PgIcon className="w-3 h-3" />
-                        {pg.label}
+                        <PgIcon className="w-3 h-3" />{pg.label}
                       </span>
                       <div className="flex gap-1 mt-0.5">
                         <button
                           onClick={() => abrirEditarVenda(v)}
                           className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                          title="Editar venda"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => setConfirmarExclusao(v)}
+                          onClick={() => setConfExcVenda(v)}
                           className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                          title="Excluir venda"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -317,8 +333,7 @@ export default function BarPage() {
               {produtos.filter((p) => p.ativo).length} produtos ativos
             </p>
             <Button onClick={abrirNovoProduto} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Novo produto
+              <Plus className="w-4 h-4" />Novo produto
             </Button>
           </div>
 
@@ -342,20 +357,12 @@ export default function BarPage() {
                           <p className="text-lg font-bold text-primary">R$ {p.preco.toFixed(2)}</p>
                         </div>
                         <div className="flex gap-1 shrink-0">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => abrirEditarProduto(p)}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
+                          <Button variant="ghost" size="icon" onClick={() => abrirEditarProduto(p)}
+                            className="text-muted-foreground hover:text-foreground">
                             <Pencil className="w-4 h-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setConfirmarExcProduto(p)}
-                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          >
+                          <Button variant="ghost" size="icon" onClick={() => setConfExcProduto(p)}
+                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -369,75 +376,9 @@ export default function BarPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ── Dialog: Confirmar exclusão de produto ── */}
-      <Dialog open={!!confirmarExclusaoProduto} onOpenChange={(o) => !o && setConfirmarExcProduto(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Excluir produto?</DialogTitle>
-          </DialogHeader>
-          {confirmarExclusaoProduto && (
-            <div className="space-y-4 pt-1">
-              <p className="text-sm text-muted-foreground">
-                O produto{" "}
-                <span className="text-foreground font-medium">{confirmarExclusaoProduto.nome}</span>{" "}
-                será removido do cardápio. Vendas anteriores não serão afetadas.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfirmarExcProduto(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => handleExcluirProduto(confirmarExclusaoProduto.id)}
-                >
-                  Excluir
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog: Confirmar exclusão de venda ── */}
-      <Dialog open={!!confirmarExclusao} onOpenChange={(o) => !o && setConfirmarExclusao(null)}>
-        <DialogContent className="bg-card border-border sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Excluir venda?</DialogTitle>
-          </DialogHeader>
-          {confirmarExclusao && (
-            <div className="space-y-4 pt-1">
-              <p className="text-sm text-muted-foreground">
-                Venda de{" "}
-                <span className="text-foreground font-medium">
-                  {confirmarExclusao.cliente || "cliente não identificado"}
-                </span>{" "}
-                no valor de{" "}
-                <span className="text-primary font-semibold">
-                  R$ {confirmarExclusao.total.toFixed(2).replace(".", ",")}
-                </span>{" "}
-                ({confirmarExclusao.hora}). Essa ação não pode ser desfeita.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfirmarExclusao(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => handleExcluirVenda(confirmarExclusao.id)}
-                >
-                  Excluir
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog: Nova / Editar Venda ── */}
+      {/* ── Dialog: Nova / Editar Venda ─────────────────────────────────────── */}
       <Dialog open={dialogVenda} onOpenChange={setDialogVenda}>
-        <DialogContent className="bg-card border-border sm:max-w-md">
+        <DialogContent className="bg-card border-border sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-foreground">
               {editandoVenda ? "Editar Venda" : "Registrar Venda"}
@@ -445,53 +386,184 @@ export default function BarPage() {
           </DialogHeader>
 
           <div className="space-y-4 pt-1">
-            {/* Cliente + Pagamento */}
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* ── Forma de pagamento ── */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Forma de pagamento</Label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {modosPagamento.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={!!editandoVenda && value === "FIADO"}
+                    onClick={() => setModoPag(value)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 py-2.5 rounded-lg border text-xs font-medium transition-all",
+                      modoPag === value
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                      !!editandoVenda && value === "FIADO" && "opacity-40 cursor-not-allowed"
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Cliente (só para modos pagos) ── */}
+            {modoPag !== "FIADO" && (
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Cliente (opcional)</Label>
                 <Input
-                  placeholder="Nome"
-                  value={formVenda.cliente}
-                  onChange={(e) => setFormVenda((f) => ({ ...f, cliente: e.target.value }))}
+                  placeholder="Nome do cliente"
+                  value={clienteTexto}
+                  onChange={(e) => setClienteTexto(e.target.value)}
                   className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Forma de pagamento</Label>
-                <Select
-                  value={formVenda.formaPagamento}
-                  onValueChange={(v) => setFormVenda((f) => ({ ...f, formaPagamento: v as FormaPagamento }))}
-                >
-                  <SelectTrigger className="bg-secondary border-border text-foreground">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    <SelectItem value="DINHEIRO" className="text-foreground">💵 Dinheiro</SelectItem>
-                    <SelectItem value="PIX"      className="text-foreground">📱 PIX</SelectItem>
-                    <SelectItem value="CARTAO"   className="text-foreground">💳 Cartão / Máquina</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
 
-            {/* Selecionar produto — adiciona direto ao clicar */}
+            {/* ── Seção Fiado ── */}
+            {modoPag === "FIADO" && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Cliente no fiado</Label>
+
+                {/* Toggle */}
+                <div className="flex gap-1 p-0.5 bg-secondary rounded-lg">
+                  {["cadastrado", "novo"].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => { setModoNovoCli(m === "novo"); setContaSel(null); setBuscaCliente("") }}
+                      className={cn(
+                        "flex-1 text-xs py-1.5 rounded-md font-medium transition-all",
+                        (m === "novo") === modoNovoCliente
+                          ? "bg-card text-foreground shadow-sm"
+                          : "text-muted-foreground"
+                      )}
+                    >
+                      {m === "cadastrado" ? "Cliente cadastrado" : "Novo cliente"}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Cliente cadastrado */}
+                {!modoNovoCliente && (
+                  <>
+                    {contaSel ? (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/30 rounded-lg">
+                        <span className="flex-1 text-sm font-medium text-primary">{contaSel.clienteNome}</span>
+                        <span className="text-xs text-muted-foreground">
+                          Saldo: R$ {contaSel.saldo.toFixed(2).replace(".", ",")}
+                        </span>
+                        <button onClick={() => setContaSel(null)} className="text-muted-foreground hover:text-foreground">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                          <Input
+                            placeholder="Buscar cliente..."
+                            value={buscaCliente}
+                            onChange={(e) => setBuscaCliente(e.target.value)}
+                            className="pl-8 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                          />
+                        </div>
+                        {buscaCliente && (
+                          <div className="max-h-36 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                            {contasFiltradas.length === 0 ? (
+                              <p className="text-center text-xs text-muted-foreground py-3">
+                                Nenhum cliente encontrado.
+                              </p>
+                            ) : contasFiltradas.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => { setContaSel(c); setBuscaCliente("") }}
+                                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/60 transition-colors text-left"
+                              >
+                                <span className="text-sm font-medium text-foreground">{c.clienteNome}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  R$ {c.saldo.toFixed(2).replace(".", ",")}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {!buscaCliente && contasFiado.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-1">
+                            Nenhuma conta fiado cadastrada.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* Novo cliente */}
+                {modoNovoCliente && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Nome *</Label>
+                      <Input
+                        placeholder="Nome completo"
+                        value={novoNome}
+                        onChange={(e) => setNovoNome(e.target.value)}
+                        className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Telefone</Label>
+                      <Input
+                        placeholder="(00) 00000-0000"
+                        value={novoTel}
+                        onChange={(e) => setNovoTel(e.target.value)}
+                        className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Busca de produto ── */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Adicionar produto</Label>
-              <Select value="" onValueChange={selecionarProduto}>
-                <SelectTrigger className="bg-secondary border-border text-foreground">
-                  <SelectValue placeholder="Toque para adicionar um produto…" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {produtos.filter((p) => p.ativo).map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="text-foreground">
-                      {p.nome} — R$ {p.preco.toFixed(2)}
-                    </SelectItem>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Digite o nome do produto..."
+                  value={buscaProduto}
+                  onChange={(e) => setBuscaProduto(e.target.value)}
+                  className="pl-8 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+              {buscaProduto && (
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                  {produtosFiltrados.length === 0 ? (
+                    <p className="text-center text-xs text-muted-foreground py-3">Produto não encontrado.</p>
+                  ) : produtosFiltrados.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => selecionarProduto(p.id)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/60 transition-colors text-left"
+                    >
+                      <span className="text-sm font-medium text-foreground">{p.nome}</span>
+                      <span className="text-sm text-primary font-semibold">
+                        R$ {p.preco.toFixed(2).replace(".", ",")}
+                      </span>
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
             </div>
 
-            {/* Lista de itens com controles de quantidade */}
+            {/* ── Itens no carrinho ── */}
             {itensVenda.length > 0 && (
               <div className="rounded-lg border border-border overflow-hidden">
                 <div className="divide-y divide-border">
@@ -521,7 +593,7 @@ export default function BarPage() {
                         R$ {(item.preco * item.quantidade).toFixed(2).replace(".", ",")}
                       </span>
                       <button
-                        onClick={() => removerItem(item.produtoId)}
+                        onClick={() => setItensVenda((p) => p.filter((i) => i.produtoId !== item.produtoId))}
                         className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -539,8 +611,8 @@ export default function BarPage() {
             )}
 
             {itensVenda.length === 0 && (
-              <p className="text-center text-xs text-muted-foreground py-2">
-                Selecione um produto acima para adicionar.
+              <p className="text-center text-xs text-muted-foreground py-1">
+                Digite acima para buscar e adicionar produtos.
               </p>
             )}
 
@@ -551,12 +623,8 @@ export default function BarPage() {
             )}
 
             <div className="flex gap-2 pt-1">
-              <Button
-                variant="outline"
-                className="flex-1 border-border"
-                onClick={() => setDialogVenda(false)}
-                disabled={isPending}
-              >
+              <Button variant="outline" className="flex-1 border-border"
+                onClick={() => setDialogVenda(false)} disabled={isPending}>
                 Cancelar
               </Button>
               <Button
@@ -564,10 +632,83 @@ export default function BarPage() {
                 disabled={itensVenda.length === 0 || isPending}
                 onClick={confirmarVenda}
               >
-                {isPending ? "Salvando…" : `${editandoVenda ? "Salvar" : "Confirmar"} — R$ ${totalVenda.toFixed(2).replace(".", ",")}`}
+                {isPending
+                  ? "Salvando…"
+                  : modoPag === "FIADO"
+                    ? `Lançar no Fiado — R$ ${totalVenda.toFixed(2).replace(".", ",")}`
+                    : `${editandoVenda ? "Salvar" : "Confirmar"} — R$ ${totalVenda.toFixed(2).replace(".", ",")}`
+                }
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Confirmar exclusão de venda ── */}
+      <Dialog open={!!confirmarExcVenda} onOpenChange={(o) => !o && setConfExcVenda(null)}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Excluir venda?</DialogTitle>
+          </DialogHeader>
+          {confirmarExcVenda && (
+            <div className="space-y-4 pt-1">
+              <p className="text-sm text-muted-foreground">
+                Venda de{" "}
+                <span className="text-foreground font-medium">
+                  {confirmarExcVenda.cliente || "cliente não identificado"}
+                </span>{" "}
+                no valor de{" "}
+                <span className="text-primary font-semibold">
+                  R$ {confirmarExcVenda.total.toFixed(2).replace(".", ",")}
+                </span>
+                . Essa ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfExcVenda(null)}>
+                  Cancelar
+                </Button>
+                <Button variant="destructive" className="flex-1"
+                  onClick={async () => {
+                    await excluirVenda(confirmarExcVenda.id)
+                    setVendas((p) => p.filter((v) => v.id !== confirmarExcVenda.id))
+                    setConfExcVenda(null)
+                  }}>
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Confirmar exclusão de produto ── */}
+      <Dialog open={!!confirmarExcProduto} onOpenChange={(o) => !o && setConfExcProduto(null)}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Excluir produto?</DialogTitle>
+          </DialogHeader>
+          {confirmarExcProduto && (
+            <div className="space-y-4 pt-1">
+              <p className="text-sm text-muted-foreground">
+                O produto{" "}
+                <span className="text-foreground font-medium">{confirmarExcProduto.nome}</span>{" "}
+                será removido do cardápio. Vendas anteriores não serão afetadas.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 border-border" onClick={() => setConfExcProduto(null)}>
+                  Cancelar
+                </Button>
+                <Button variant="destructive" className="flex-1"
+                  onClick={async () => {
+                    await excluirProduto(confirmarExcProduto.id)
+                    setProdutos((p) => p.filter((x) => x.id !== confirmarExcProduto.id))
+                    setConfExcProduto(null)
+                  }}>
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -593,9 +734,7 @@ export default function BarPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Preço (R$)</Label>
                 <Input
-                  type="number"
-                  step="0.50"
-                  placeholder="0,00"
+                  type="number" step="0.50" placeholder="0,00"
                   value={formProd.preco}
                   onChange={(e) => setFormProd((f) => ({ ...f, preco: e.target.value }))}
                   className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
@@ -622,7 +761,8 @@ export default function BarPage() {
               <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogProduto(false)}>
                 Cancelar
               </Button>
-              <Button className="flex-1" onClick={salvarProduto} disabled={!formProd.nome || !formProd.preco || salvandoProduto}>
+              <Button className="flex-1" onClick={salvarProduto}
+                disabled={!formProd.nome || !formProd.preco || salvandoProduto}>
                 {salvandoProduto ? "Salvando..." : "Salvar"}
               </Button>
             </div>

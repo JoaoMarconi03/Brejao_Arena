@@ -180,3 +180,63 @@ export async function excluirVenda(id: string) {
   revalidatePath("/dashboard/bar")
   revalidatePath("/dashboard")
 }
+
+// ── Fiado via Bar ─────────────────────────────────────────────────────────────
+
+export async function buscarContasFiado() {
+  const tenantId = await getTenantId()
+  const contas = await db.contaFiado.findMany({
+    where: { cliente: { tenantId } },
+    include: {
+      cliente: { select: { nome: true } },
+      lancamentos: { select: { valor: true } },
+      pagamentos: { select: { valor: true } },
+    },
+    orderBy: { cliente: { nome: "asc" } },
+  })
+  return contas.map((c) => {
+    const totalLanc = c.lancamentos.reduce((s, l) => s + Number(l.valor), 0)
+    const totalPag  = c.pagamentos.reduce((s, p) => s + Number(p.valor), 0)
+    return {
+      id:          c.id,
+      clienteNome: c.cliente.nome,
+      saldo:       Math.max(0, totalLanc - totalPag),
+    }
+  })
+}
+
+export async function criarVendaFiado(data: {
+  contaId: string
+  itens: { produtoId: string; nome: string; preco: number; quantidade: number }[]
+}) {
+  await getTenantId()
+  for (const item of data.itens) {
+    const descricao = item.quantidade > 1 ? `${item.nome} x${item.quantidade}` : item.nome
+    const valor     = item.preco * item.quantidade
+    await db.lancamentoFiado.create({
+      data: { contaId: data.contaId, descricao, valor, produtoId: item.produtoId },
+    })
+  }
+  revalidatePath("/dashboard/fiado")
+  revalidatePath("/dashboard")
+}
+
+export async function criarClienteEContaFiado(data: {
+  nome:     string
+  telefone?: string
+}): Promise<{ ok: boolean; contaId?: string; erro?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!data.nome?.trim()) return { ok: false, erro: "Nome é obrigatório." }
+    const cliente = await db.cliente.create({
+      data: { nome: data.nome.trim(), telefone: data.telefone?.trim() || null, tenantId },
+    })
+    const conta = await db.contaFiado.create({
+      data: { clienteId: cliente.id, diaFechamento: 1 },
+    })
+    revalidatePath("/dashboard/fiado")
+    return { ok: true, contaId: conta.id }
+  } catch (e) {
+    return { ok: false, erro: e instanceof Error ? e.message : String(e) }
+  }
+}
