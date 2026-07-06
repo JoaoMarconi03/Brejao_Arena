@@ -3,11 +3,12 @@
 import { db } from "@/lib/db"
 
 export async function buscarTenantPublico(slug: string) {
-  const tenant = await db.tenant.findFirst({
-    where: { slug },
-    select: { id: true, nome: true, whatsapp: true },
-  })
+  const rows = await db.$queryRaw<Array<{ id: string; nome: string; whatsapp: string | null }>>`
+    SELECT id, nome, whatsapp FROM "Tenant" WHERE slug = ${slug} LIMIT 1
+  `
+  const tenant = rows[0]
   if (!tenant) return null
+
   const quadras = await db.quadra.findMany({
     where: { tenantId: tenant.id, ativa: true },
     select: {

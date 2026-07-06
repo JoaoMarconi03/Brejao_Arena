@@ -13,11 +13,10 @@ async function getTenantId() {
 
 export async function buscarConfigTenant() {
   const tenantId = await getTenantId()
-  const tenant = await db.tenant.findUnique({
-    where: { id: tenantId },
-    select: { nome: true, whatsapp: true },
-  })
-  return tenant
+  const rows = await db.$queryRaw<Array<{ nome: string; whatsapp: string | null }>>`
+    SELECT nome, whatsapp FROM "Tenant" WHERE id = ${tenantId} LIMIT 1
+  `
+  return rows[0] ?? null
 }
 
 export async function salvarWhatsApp(whatsapp: string): Promise<{ ok: boolean; erro?: string }> {
@@ -27,7 +26,7 @@ export async function salvarWhatsApp(whatsapp: string): Promise<{ ok: boolean; e
     if (limpo.length < 10 || limpo.length > 13) {
       return { ok: false, erro: "Número inválido. Use o formato: 5511999998888" }
     }
-    await db.tenant.update({ where: { id: tenantId }, data: { whatsapp: limpo } })
+    await db.$executeRaw`UPDATE "Tenant" SET whatsapp = ${limpo} WHERE id = ${tenantId}`
     revalidatePath("/dashboard/configuracoes")
     return { ok: true }
   } catch (e) {
