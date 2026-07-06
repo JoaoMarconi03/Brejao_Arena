@@ -2,6 +2,32 @@
 
 import { db } from "@/lib/db"
 
+export async function buscarTenantPublico(slug: string) {
+  const tenant = await db.tenant.findFirst({
+    where: { slug },
+    select: { id: true, nome: true, whatsapp: true },
+  })
+  if (!tenant) return null
+  const quadras = await db.quadra.findMany({
+    where: { tenantId: tenant.id, ativa: true },
+    select: {
+      id: true, nome: true, descricao: true,
+      valor1h: true, valor1h30: true, valor2h: true,
+      horaAbertura: true, horaFechamento: true, diasFuncionamento: true,
+    },
+    orderBy: { nome: "asc" },
+  })
+  return {
+    ...tenant,
+    quadras: quadras.map((q) => ({
+      ...q,
+      valor1h:   q.valor1h   ? Number(q.valor1h)   : null,
+      valor1h30: q.valor1h30 ? Number(q.valor1h30) : null,
+      valor2h:   q.valor2h   ? Number(q.valor2h)   : null,
+    })),
+  }
+}
+
 // Ação pública (sem login) — usada na home para mostrar disponibilidade real.
 export async function buscarOcupacoesPublico(
   quadraId: string,

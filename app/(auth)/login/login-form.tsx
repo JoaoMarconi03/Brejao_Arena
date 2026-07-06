@@ -141,15 +141,6 @@ function LoginBrejao({
             </button>
           </form>
 
-          <p className="text-center text-xs mt-6" style={{ color: "#6b7280" }}>
-            Não tem conta?{" "}
-            <a
-              href={tenantSlug ? `/registro?arena=${tenantSlug}` : "/registro"}
-              style={{ color: "#16a34a", fontWeight: 500 }}
-            >
-              Criar conta
-            </a>
-          </p>
         </div>
       </div>
     </div>
@@ -295,15 +286,6 @@ function LoginVotocel({
             </button>
           </form>
 
-          <p className="text-center text-xs mt-6" style={{ color: "#6b7280" }}>
-            Não tem conta?{" "}
-            <a
-              href={tenantSlug ? `/registro?arena=${tenantSlug}` : "/registro"}
-              style={{ color: "#16a34a", fontWeight: 500 }}
-            >
-              Criar conta
-            </a>
-          </p>
         </div>
       </div>
     </div>

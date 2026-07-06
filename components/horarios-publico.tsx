@@ -61,12 +61,14 @@ export function HorariosPublico({
   valor1h,
   valor1h30,
   valor2h,
+  whatsapp = "",
 }: {
   quadraId:   string
   quadraNome: string
   valor1h:    number | null
   valor1h30:  number | null
   valor2h:    number | null
+  whatsapp?:  string
 }) {
   const [date, setDate]             = useState(new Date())
   const [ocupacoes, setOcupacoes]   = useState<Ocupacao[]>([])
@@ -128,7 +130,8 @@ export function HorariosPublico({
     const mensagem =
       `Olá! Gostaria de reservar ${quadraNome} para o dia ${dataFormatada} das ${slotAberto} às ${fim} (${durLabel}). Poderia confirmar o horário?`
 
-    window.open(`https://wa.me/5515997740451?text=${encodeURIComponent(mensagem)}`, "_blank")
+    const numero = whatsapp || "5515997740451"
+    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, "_blank")
   }
 
   const labelData = isToday(date)
