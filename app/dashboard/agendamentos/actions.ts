@@ -176,6 +176,20 @@ export async function registrarPagamentoAgendamento(id: string) {
   revalidatePath("/dashboard/pagamentos")
 }
 
+export async function reverterPagamento(id: string) {
+  await getSession()
+  await db.agendamento.update({
+    where: { id },
+    data: {
+      status: "CONFIRMADO",
+      pagamentoRegistrado: false,
+      pagamentoRegistradoEm: null,
+    },
+  })
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/pagamentos")
+}
+
 // ── Edição e exclusão ─────────────────────────────────────────────────────────
 
 export async function excluirAgendamento(id: string) {

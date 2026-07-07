@@ -7,7 +7,7 @@ import {
 import { ptBR } from "date-fns/locale"
 import {
   ChevronLeft, ChevronRight, Plus, CalendarDays,
-  Repeat2, AlertTriangle, CheckCircle2, Trash2,
+  Repeat2, AlertTriangle, CheckCircle2, Trash2, Undo2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -24,6 +24,7 @@ import {
   editarAgendamento,
   excluirAgendamento,
   registrarPagamentoAgendamento,
+  reverterPagamento,
 } from "@/app/dashboard/agendamentos/actions"
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -143,6 +144,7 @@ export function CalendarioAgendamentos({
   const [pagDialog, setPagDialog]       = useState<{ agId: string; agNome: string; valor: number } | null>(null)
   const [formaPag, setFormaPag]         = useState("PIX")
   const [pagandoId, setPagandoId]       = useState<string | null>(null)
+  const [revertendoId, setRevertendoId] = useState<string | null>(null)
   const [erro, setErro]                 = useState("")
   const [sucesso, setSucesso]           = useState("")
   const [calAberto, setCalAberto]       = useState(false)
@@ -218,6 +220,19 @@ export function CalendarioAgendamentos({
       valor: ag.valor > 0 ? String(ag.valor) : "",
     })
     setEditandoId(ag.id); setErro(""); setSucesso(""); setDialogOpen(true)
+  }
+
+  async function desfazerPagamento(id: string) {
+    setRevertendoId(id)
+    try {
+      await reverterPagamento(id)
+      const novos = await buscarAgendamentosPorSemana(weekKey)
+      setAgendamentos(novos)
+    } catch (err) {
+      console.error("Erro ao reverter pagamento:", err)
+    } finally {
+      setRevertendoId(null)
+    }
   }
 
   async function confirmarPagamento() {
@@ -436,7 +451,16 @@ export function CalendarioAgendamentos({
                       </div>
                       {/* Ações */}
                       <div className="flex flex-col gap-1 shrink-0 justify-center">
-                        {ag.status !== "PAGO" && (
+                        {ag.status === "PAGO" ? (
+                          <button
+                            type="button"
+                            title="Desfazer pagamento"
+                            onClick={(e) => { e.stopPropagation(); desfazerPagamento(ag.id) }}
+                            className="p-2 rounded-xl bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 active:bg-yellow-500/20"
+                          >
+                            <Undo2 className="w-5 h-5" />
+                          </button>
+                        ) : (
                           <button
                             type="button"
                             title="Registrar pagamento"
@@ -551,15 +575,16 @@ export function CalendarioAgendamentos({
                       const top      = (toMin(ag.inicio.h, ag.inicio.m) - INICIO_MIN) / 30 * SLOT_H
                       const height   = Math.max(ag.duracaoMin / 30 * SLOT_H, SLOT_H * 0.8)
                       const tiny     = height < SLOT_H * 1.2
-                      const isExc    = excluindo === ag.id
-                      const isPaying = pagandoId === ag.id
+                      const isExc       = excluindo === ag.id
+                      const isPaying    = pagandoId === ag.id
+                      const isReverting = revertendoId === ag.id
 
                       return (
                         <div
                           key={ag.id}
                           style={{ top: top + 1, height: height - 2, left: 2, right: 2, position: "absolute", zIndex: 10 }}
                           onClick={(e) => { e.stopPropagation(); abrirDialogEditar(ag) }}
-                          className={`rounded-md overflow-hidden cursor-pointer group select-none transition-opacity ${STATUS_BG[ag.status] ?? STATUS_BG.CONFIRMADO} ${(isExc || isPaying) ? "opacity-40 pointer-events-none" : ""}`}
+                          className={`rounded-md overflow-hidden cursor-pointer group select-none transition-opacity ${STATUS_BG[ag.status] ?? STATUS_BG.CONFIRMADO} ${(isExc || isPaying || isReverting) ? "opacity-40 pointer-events-none" : ""}`}
                         >
                           <div className="px-1.5 py-1 h-full flex flex-col justify-center relative">
                             <p className={`font-semibold leading-tight truncate pr-8 ${tiny ? "text-[10px]" : "text-xs"}`}>
@@ -568,8 +593,23 @@ export function CalendarioAgendamentos({
                             {!tiny && (
                               <p className="font-mono text-[10px] opacity-70 mt-0.5">{ag.inicioHora}–{ag.fimHora}</p>
                             )}
-                            {/* Botão de confirmar pagamento */}
-                            {ag.status !== "PAGO" && (
+                            {/* Label de status no card (só para PAGO e PENDENTE) */}
+                            {!tiny && ag.status !== "CONFIRMADO" && (
+                              <p className="text-[9px] font-bold uppercase tracking-wider opacity-80 mt-0.5">
+                                {STATUS_LABEL[ag.status]}
+                              </p>
+                            )}
+                            {/* Botão de pagar ou desfazer pagamento */}
+                            {ag.status === "PAGO" ? (
+                              <button
+                                type="button"
+                                title="Desfazer pagamento"
+                                onClick={(e) => { e.stopPropagation(); desfazerPagamento(ag.id) }}
+                                className="absolute top-0.5 right-4 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 transition-all"
+                              >
+                                <Undo2 className="w-3 h-3" />
+                              </button>
+                            ) : (
                               <button
                                 type="button"
                                 title="Registrar pagamento"
@@ -600,12 +640,15 @@ export function CalendarioAgendamentos({
       </div>
 
       {/* ── Overlay de carregamento (salvar / excluir) ── */}
-      {(salvando || !!excluindo || !!pagandoId) && (
+      {(salvando || !!excluindo || !!pagandoId || !!revertendoId) && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl px-10 py-8 flex flex-col items-center gap-4 shadow-2xl">
             <div className="w-10 h-10 rounded-full border-[3px] border-primary/25 border-t-primary animate-spin" />
             <p className="text-sm font-semibold text-foreground">
-              {!!excluindo ? "Excluindo agendamento…" : !!pagandoId ? "Registrando pagamento…" : "Salvando agendamento…"}
+              {!!excluindo    ? "Excluindo agendamento…"   :
+               !!pagandoId   ? "Registrando pagamento…"   :
+               !!revertendoId? "Revertendo pagamento…"    :
+               "Salvando agendamento…"}
             </p>
           </div>
         </div>
