@@ -23,6 +23,7 @@ import {
   criarAgendamentosMensaisAdmin,
   editarAgendamento,
   excluirAgendamento,
+  registrarPagamentoAgendamento,
 } from "@/app/dashboard/agendamentos/actions"
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -119,12 +120,14 @@ export function CalendarioAgendamentos({
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [agendamentos, setAgendamentos] = useState<AgendamentoSemana[]>([])
-  const [carregando, setCarregando]     = useState(false)
   const [dialogOpen, setDialogOpen]     = useState(false)
   const [editandoId, setEditandoId]     = useState<string | null>(null)
   const [salvando, setSalvando]         = useState(false)
   const [excluindo, setExcluindo]       = useState<string | null>(null)
   const [confirmarEx, setConfirmarEx]   = useState<string | null>(null)
+  const [pagDialog, setPagDialog]       = useState<{ agId: string; agNome: string; valor: number } | null>(null)
+  const [formaPag, setFormaPag]         = useState("PIX")
+  const [pagandoId, setPagandoId]       = useState<string | null>(null)
   const [erro, setErro]                 = useState("")
   const [sucesso, setSucesso]           = useState("")
   const [calAberto, setCalAberto]       = useState(false)
@@ -142,14 +145,12 @@ export function CalendarioAgendamentos({
 
   useEffect(() => {
     let ativo = true
-    const buscar = (inicial?: boolean) => {
-      if (inicial) setCarregando(true)
+    const buscar = () => {
       buscarAgendamentosPorSemana(weekKey)
         .then((dados) => { if (ativo) setAgendamentos(dados) })
         .catch(console.error)
-        .finally(() => { if (ativo && inicial) setCarregando(false) })
     }
-    buscar(true)
+    buscar()
     const id = setInterval(() => buscar(), 30_000)
     return () => { ativo = false; clearInterval(id) }
   }, [weekKey])
@@ -197,6 +198,22 @@ export function CalendarioAgendamentos({
       valor: ag.valor > 0 ? String(ag.valor) : "",
     })
     setEditandoId(ag.id); setErro(""); setSucesso(""); setDialogOpen(true)
+  }
+
+  async function confirmarPagamento() {
+    if (!pagDialog) return
+    const { agId } = pagDialog
+    setPagDialog(null)
+    setPagandoId(agId)
+    try {
+      await registrarPagamentoAgendamento(agId)
+      const novos = await buscarAgendamentosPorSemana(weekKey)
+      setAgendamentos(novos)
+    } catch (err) {
+      console.error("Erro ao registrar pagamento:", err)
+    } finally {
+      setPagandoId(null)
+    }
   }
 
   async function confirmarEExcluir() {
@@ -395,24 +412,36 @@ export function CalendarioAgendamentos({
 
                     {/* Blocos de agendamento */}
                     {ags.map((ag) => {
-                      const top    = (toMin(ag.inicio.h, ag.inicio.m) - INICIO_MIN) / 30 * SLOT_H
-                      const height = Math.max(ag.duracaoMin / 30 * SLOT_H, SLOT_H * 0.8)
-                      const tiny   = height < SLOT_H * 1.2
-                      const isExc  = excluindo === ag.id
+                      const top      = (toMin(ag.inicio.h, ag.inicio.m) - INICIO_MIN) / 30 * SLOT_H
+                      const height   = Math.max(ag.duracaoMin / 30 * SLOT_H, SLOT_H * 0.8)
+                      const tiny     = height < SLOT_H * 1.2
+                      const isExc    = excluindo === ag.id
+                      const isPaying = pagandoId === ag.id
 
                       return (
                         <div
                           key={ag.id}
                           style={{ top: top + 1, height: height - 2, left: 2, right: 2, position: "absolute", zIndex: 10 }}
                           onClick={(e) => { e.stopPropagation(); abrirDialogEditar(ag) }}
-                          className={`rounded-md overflow-hidden cursor-pointer group select-none transition-opacity ${STATUS_BG[ag.status] ?? STATUS_BG.CONFIRMADO} ${isExc ? "opacity-40 pointer-events-none" : ""}`}
+                          className={`rounded-md overflow-hidden cursor-pointer group select-none transition-opacity ${STATUS_BG[ag.status] ?? STATUS_BG.CONFIRMADO} ${(isExc || isPaying) ? "opacity-40 pointer-events-none" : ""}`}
                         >
                           <div className="px-1.5 py-1 h-full flex flex-col justify-center relative">
-                            <p className={`font-semibold leading-tight truncate ${tiny ? "text-[10px]" : "text-xs"}`}>
+                            <p className={`font-semibold leading-tight truncate pr-8 ${tiny ? "text-[10px]" : "text-xs"}`}>
                               {ag.clienteNome}
                             </p>
                             {!tiny && (
                               <p className="font-mono text-[10px] opacity-70 mt-0.5">{ag.inicioHora}–{ag.fimHora}</p>
+                            )}
+                            {/* Botão de confirmar pagamento */}
+                            {ag.status !== "PAGO" && (
+                              <button
+                                type="button"
+                                title="Registrar pagamento"
+                                onClick={(e) => { e.stopPropagation(); setPagDialog({ agId: ag.id, agNome: ag.clienteNome, valor: ag.valor }); setFormaPag("PIX") }}
+                                className="absolute top-0.5 right-4 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-green-500/20 text-green-600 dark:text-green-400 transition-all"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                              </button>
                             )}
                             <button
                               type="button"
@@ -435,16 +464,63 @@ export function CalendarioAgendamentos({
       </div>
 
       {/* ── Overlay de carregamento (salvar / excluir) ── */}
-      {(salvando || !!excluindo) && (
+      {(salvando || !!excluindo || !!pagandoId) && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl px-10 py-8 flex flex-col items-center gap-4 shadow-2xl">
             <div className="w-10 h-10 rounded-full border-[3px] border-primary/25 border-t-primary animate-spin" />
             <p className="text-sm font-semibold text-foreground">
-              {!!excluindo ? "Excluindo agendamento…" : "Salvando agendamento…"}
+              {!!excluindo ? "Excluindo agendamento…" : !!pagandoId ? "Registrando pagamento…" : "Salvando agendamento…"}
             </p>
           </div>
         </div>
       )}
+
+      {/* Dialog: Registrar pagamento */}
+      <Dialog open={!!pagDialog} onOpenChange={(o) => { if (!o) setPagDialog(null) }}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader><DialogTitle className="text-foreground">Registrar pagamento</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            {pagDialog && (
+              <>
+                <div className="bg-secondary/50 rounded-xl px-4 py-3 space-y-0.5">
+                  <p className="text-sm font-semibold text-foreground">{pagDialog.agNome}</p>
+                  {pagDialog.valor > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Valor: <span className="font-bold text-foreground">R$ {pagDialog.valor.toFixed(2).replace(".", ",")}</span>
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Forma de pagamento</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {["PIX", "Dinheiro", "Crédito", "Débito"].map((forma) => (
+                      <button
+                        key={forma}
+                        type="button"
+                        onClick={() => setFormaPag(forma)}
+                        className={`py-2.5 px-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                          formaPag === forma
+                            ? "border-green-500 bg-green-500/10 text-green-600 dark:text-green-400"
+                            : "border-border bg-secondary/40 text-muted-foreground hover:border-green-500/40 hover:text-foreground"
+                        }`}
+                      >
+                        {forma}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setPagDialog(null)}>Cancelar</Button>
+              <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2" onClick={confirmarPagamento}>
+                <CheckCircle2 className="w-4 h-4" />
+                Confirmar pago
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: Confirmar exclusão */}
       <Dialog open={!!confirmarEx} onOpenChange={(o) => { if (!o) setConfirmarEx(null) }}>

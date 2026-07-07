@@ -24,22 +24,17 @@ export function DashboardShell({
   return (
     <div className="flex h-screen overflow-hidden">
 
-      {/* ── Sidebar desktop (colapsável) ─────────────────────────── */}
+      {/* ── Sidebar desktop — no fluxo flex, não fixed ────────────── */}
       <aside
         style={{ width: desktopOpen ? 240 : 0, transition: "width 250ms ease" }}
-        className="hidden lg:flex lg:flex-col fixed inset-y-0 z-50 overflow-hidden border-r border-sidebar-border bg-sidebar"
+        className="hidden lg:flex flex-col shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar"
       >
         <Sidebar tenantNome={tenantNome} />
       </aside>
 
       {/* ── Área principal ───────────────────────────────────────── */}
-      <div
-        style={{
-          paddingLeft: desktopOpen ? 240 : 0,
-          transition: "padding-left 250ms ease",
-        }}
-        className="flex flex-col flex-1 overflow-hidden lg:min-w-0"
-      >
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+
         {/* Header — visível em todos os tamanhos */}
         <header className="flex items-center gap-3 px-4 py-3 border-b border-border bg-sidebar shrink-0">
 
