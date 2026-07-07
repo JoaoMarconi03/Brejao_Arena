@@ -100,6 +100,20 @@ const STATUS_BG: Record<string, string> = {
   CANCELADO:  "bg-red-500/15 border-l-2 border-red-500 text-red-600",
 }
 
+const STATUS_BADGE: Record<string, string> = {
+  CONFIRMADO: "bg-primary/10 text-primary",
+  PENDENTE:   "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+  PAGO:       "bg-green-500/10 text-green-600 dark:text-green-400",
+  CANCELADO:  "bg-red-500/10 text-red-500",
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  CONFIRMADO: "Confirmado",
+  PENDENTE:   "Pendente",
+  PAGO:       "Pago",
+  CANCELADO:  "Cancelado",
+}
+
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export function CalendarioAgendamentos({
@@ -118,7 +132,8 @@ export function CalendarioAgendamentos({
   // Horas cheias para labels
   const horasLabels = slots.filter((s) => s.min % 60 === 0)
 
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [weekStart, setWeekStart]   = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [diaVisivel, setDiaVisivel] = useState(() => new Date())
   const [agendamentos, setAgendamentos] = useState<AgendamentoSemana[]>([])
   const [dialogOpen, setDialogOpen]     = useState(false)
   const [editandoId, setEditandoId]     = useState<string | null>(null)
@@ -176,6 +191,11 @@ export function CalendarioAgendamentos({
   const datasMensais    = form.tipo === "MENSALISTA" ? gerarDatasMensais(form.dataSel) : []
 
   // ── Handlers ──────────────────────────────────────────────────────────────
+
+  function irParaDiaMobile(dia: Date) {
+    setDiaVisivel(dia)
+    setWeekStart(startOfWeek(dia, { weekStartsOn: 1 }))
+  }
 
   function abrirDialog(dia?: Date) {
     const d = dia ?? new Date()
@@ -312,8 +332,8 @@ export function CalendarioAgendamentos({
         </Button>
       </div>
 
-      {/* Navegação semanal */}
-      <div className="flex items-center gap-2 px-4 lg:px-6 py-2.5 border-b border-border shrink-0">
+      {/* Navegação semanal — desktop */}
+      <div className="hidden lg:flex items-center gap-2 px-6 py-2.5 border-b border-border shrink-0">
         <Button variant="ghost" size="icon" onClick={() => setWeekStart((w) => subWeeks(w, 1))}>
           <ChevronLeft className="w-4 h-4" />
         </Button>
@@ -331,8 +351,124 @@ export function CalendarioAgendamentos({
         )}
       </div>
 
-      {/* ── Calendário: header sticky + corpo rolável em um único container ── */}
-      <div className="flex flex-1 overflow-auto">
+      {/* Navegação de dia — mobile */}
+      <div className="flex lg:hidden items-center gap-2 px-2 py-2 border-b border-border shrink-0">
+        <Button variant="ghost" size="icon" onClick={() => irParaDiaMobile(addDays(diaVisivel, -1))}>
+          <ChevronLeft className="w-4 h-4" />
+        </Button>
+        <div className="flex-1 text-center">
+          <p className={`font-bold text-sm ${isToday(diaVisivel) ? "text-primary" : "text-foreground"}`}>
+            {isToday(diaVisivel) ? "Hoje" : format(diaVisivel, "EEE, dd/MM", { locale: ptBR })}
+          </p>
+          <p className="text-[10px] text-muted-foreground capitalize">
+            {format(diaVisivel, "MMMM yyyy", { locale: ptBR })}
+          </p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => irParaDiaMobile(addDays(diaVisivel, 1))}>
+          <ChevronRight className="w-4 h-4" />
+        </Button>
+        {!isToday(diaVisivel) && (
+          <Button variant="outline" size="sm" className="text-xs border-border shrink-0"
+            onClick={() => irParaDiaMobile(new Date())}>
+            <CalendarDays className="w-3.5 h-3.5 mr-1" />Hoje
+          </Button>
+        )}
+      </div>
+
+      {/* ── Visão mobile: lista do dia ── */}
+      <div className="flex lg:hidden flex-col flex-1 overflow-y-auto">
+        {(() => {
+          const agsHoje = (agsPorDia[dateKey(diaVisivel)] ?? [])
+            .slice()
+            .sort((a, b) => toMin(a.inicio.h, a.inicio.m) - toMin(b.inicio.h, b.inicio.m))
+          return agsHoje.length === 0 ? (
+            <div className="flex flex-col items-center justify-center flex-1 gap-3 text-muted-foreground py-16">
+              <CalendarDays className="w-10 h-10 opacity-20" />
+              <p className="text-sm font-medium">Nenhum agendamento neste dia</p>
+              <Button size="sm" variant="outline" className="gap-2 mt-1 border-border"
+                onClick={() => abrirDialog(diaVisivel)}>
+                <Plus className="w-3.5 h-3.5" />Novo agendamento
+              </Button>
+            </div>
+          ) : (
+            <div className="p-3 space-y-2">
+              {agsHoje.map((ag) => {
+                const isExc    = excluindo === ag.id
+                const isPaying = pagandoId === ag.id
+                const duracaoH = Math.floor(ag.duracaoMin / 60)
+                const duracaoM = ag.duracaoMin % 60
+                const duracaoLabel = duracaoH > 0
+                  ? duracaoM > 0 ? `${duracaoH}h${duracaoM}min` : `${duracaoH}h`
+                  : `${duracaoM}min`
+                return (
+                  <div
+                    key={ag.id}
+                    onClick={() => abrirDialogEditar(ag)}
+                    className={`rounded-xl border border-border bg-card cursor-pointer transition-opacity active:opacity-70 ${(isExc || isPaying) ? "opacity-40 pointer-events-none" : ""}`}
+                  >
+                    <div className="p-3 flex gap-3">
+                      {/* Barra de status lateral */}
+                      <div className={`w-1 rounded-full shrink-0 self-stretch ${
+                        ag.status === "PAGO"       ? "bg-green-500" :
+                        ag.status === "PENDENTE"   ? "bg-yellow-500" :
+                        ag.status === "CANCELADO"  ? "bg-red-500" :
+                        "bg-primary"
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        {/* Nome */}
+                        <p className="font-bold text-foreground text-base leading-tight">{ag.clienteNome}</p>
+                        {/* Horário + duração */}
+                        <p className="text-sm font-mono text-muted-foreground mt-0.5">
+                          {ag.inicioHora} – {ag.fimHora}
+                          <span className="text-xs ml-2 font-sans">({duracaoLabel})</span>
+                        </p>
+                        {/* Status + valor */}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[ag.status] ?? STATUS_BADGE.CONFIRMADO}`}>
+                            {STATUS_LABEL[ag.status] ?? ag.status}
+                          </span>
+                          {ag.valor > 0 && (
+                            <span className="text-xs text-muted-foreground font-medium">
+                              R$ {ag.valor.toFixed(2).replace(".", ",")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Ações */}
+                      <div className="flex flex-col gap-1 shrink-0 justify-center">
+                        {ag.status !== "PAGO" && (
+                          <button
+                            type="button"
+                            title="Registrar pagamento"
+                            onClick={(e) => { e.stopPropagation(); setPagDialog({ agId: ag.id, agNome: ag.clienteNome, valor: ag.valor }); setFormaPag("PIX") }}
+                            className="p-2 rounded-xl bg-green-500/10 text-green-600 dark:text-green-400 active:bg-green-500/20"
+                          >
+                            <CheckCircle2 className="w-5 h-5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setConfirmarEx(ag.id) }}
+                          className="p-2 rounded-xl bg-secondary text-muted-foreground active:bg-destructive/10 active:text-destructive"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <Button size="sm" variant="outline" className="w-full gap-2 mt-2 border-border border-dashed"
+                onClick={() => abrirDialog(diaVisivel)}>
+                <Plus className="w-3.5 h-3.5" />Novo agendamento neste dia
+              </Button>
+            </div>
+          )
+        })()}
+      </div>
+
+      {/* ── Calendário desktop: header sticky + corpo rolável em um único container ── */}
+      <div className="hidden lg:flex flex-1 overflow-auto">
         {/* Wrapper único garante que header e colunas tenham a mesma largura */}
         <div className="flex flex-col flex-1 min-w-[476px]">
 
