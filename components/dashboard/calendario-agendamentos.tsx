@@ -120,18 +120,31 @@ const STATUS_LABEL: Record<string, string> = {
 export function CalendarioAgendamentos({
   quadraId, quadraNome, precos = {}, clienteFixo,
   horaAbertura = "08:00", horaFechamento = "23:00",
+  horaAberturaFds = "08:00", horaFechamentoFds = "22:00",
 }: {
   quadraId: string; quadraNome: string; precos?: Precos
   clienteFixo?: { id: string; nome: string }
   horaAbertura?: string; horaFechamento?: string
+  horaAberturaFds?: string; horaFechamentoFds?: string
 }) {
-  const INICIO_MIN = parseHora(horaAbertura)
-  const FIM_MIN    = parseHora(horaFechamento, true)
+  const INICIO_MIN_SEM = parseHora(horaAbertura)
+  const FIM_MIN_SEM    = parseHora(horaFechamento, true)
+  const INICIO_MIN_FDS = parseHora(horaAberturaFds)
+  const FIM_MIN_FDS    = parseHora(horaFechamentoFds, true)
+  // Grade mostra a união dos dois intervalos
+  const INICIO_MIN = Math.min(INICIO_MIN_SEM, INICIO_MIN_FDS)
+  const FIM_MIN    = Math.max(FIM_MIN_SEM, FIM_MIN_FDS)
 
-  const slots    = buildSlots(INICIO_MIN, FIM_MIN)
-  const slotsFim = buildSlotsFim(INICIO_MIN, FIM_MIN)
+  function ehFds(d: Date) { const dow = d.getDay(); return dow === 0 || dow === 6 }
+  function horasEfetivas(d: Date) {
+    return ehFds(d)
+      ? { inicio: INICIO_MIN_FDS, fim: FIM_MIN_FDS }
+      : { inicio: INICIO_MIN_SEM, fim: FIM_MIN_SEM }
+  }
+
+  const slotsGrade = buildSlots(INICIO_MIN, FIM_MIN)
   // Horas cheias para labels
-  const horasLabels = slots.filter((s) => s.min % 60 === 0)
+  const horasLabels = slotsGrade.filter((s) => s.min % 60 === 0)
 
   const [weekStart, setWeekStart]   = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [diaVisivel, setDiaVisivel] = useState(() => new Date())
@@ -152,7 +165,7 @@ export function CalendarioAgendamentos({
   const [form, setForm] = useState<FormState>({
     tipo: "AVULSO", cliente: "", clienteId: null, dataSel: new Date(),
     inicio: horaAbertura,
-    fim: fmt(Math.floor(Math.min(INICIO_MIN + 60, FIM_MIN) / 60) % 24, Math.min(INICIO_MIN + 60, FIM_MIN) % 60),
+    fim: fmt(Math.floor(Math.min(INICIO_MIN_SEM + 60, FIM_MIN_SEM) / 60) % 24, Math.min(INICIO_MIN_SEM + 60, FIM_MIN_SEM) % 60),
     valor: "",
   })
 
@@ -201,12 +214,15 @@ export function CalendarioAgendamentos({
 
   function abrirDialog(dia?: Date) {
     const d = dia ?? new Date()
-    const fimMin = Math.min(INICIO_MIN + 60, FIM_MIN)
-    const va = valorParaDuracao(fimMin - INICIO_MIN, precos)
+    const ef = horasEfetivas(d)
+    const fimMin = Math.min(ef.inicio + 60, ef.fim)
+    const va = valorParaDuracao(fimMin - ef.inicio, precos)
     setForm({
       tipo: "AVULSO", cliente: clienteFixo?.nome ?? "", clienteId: clienteFixo?.id ?? null,
-      dataSel: d, inicio: horaAbertura,
-      fim: fmt(Math.floor(fimMin / 60) % 24, fimMin % 60), valor: va,
+      dataSel: d,
+      inicio: fmt(Math.floor(ef.inicio / 60) % 24, ef.inicio % 60),
+      fim: fmt(Math.floor(fimMin / 60) % 24, fimMin % 60),
+      valor: va,
     })
     setEditandoId(null); setErro(""); setSucesso(""); setDialogOpen(true)
   }
@@ -328,6 +344,11 @@ export function CalendarioAgendamentos({
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
+
+  // Slots do formulário dependem do dia selecionado (seg-sex vs fds)
+  const efDialog    = horasEfetivas(form.dataSel)
+  const slotsForm   = buildSlots(efDialog.inicio, efDialog.fim)
+  const slotsFim    = buildSlotsFim(efDialog.inicio, efDialog.fim)
 
   const totalH = (FIM_MIN - INICIO_MIN) / 30 * SLOT_H   // altura total da grade
 
@@ -559,7 +580,7 @@ export function CalendarioAgendamentos({
                       />
                     ))}
                     {/* Linhas de meia hora */}
-                    {slots.filter((s) => s.min % 60 !== 0).map((s) => (
+                    {slotsGrade.filter((s) => s.min % 60 !== 0).map((s) => (
                       <div
                         key={s.min}
                         style={{ top: (s.min - INICIO_MIN) / 30 * SLOT_H }}
@@ -772,7 +793,21 @@ export function CalendarioAgendamentos({
                 </PopoverTrigger>
                 <PopoverContent align="start" className="p-2">
                   <Calendar mode="single" selected={form.dataSel} locale={ptBR}
-                    onSelect={(d) => { if (d) { setForm((f) => ({ ...f, dataSel: d })); setCalAberto(false) } }} />
+                    onSelect={(d) => {
+                      if (d) {
+                        const ef = horasEfetivas(d)
+                        const fimMin = Math.min(ef.inicio + 60, ef.fim)
+                        const va = valorParaDuracao(fimMin - ef.inicio, precos)
+                        setForm((f) => ({
+                          ...f,
+                          dataSel: d,
+                          inicio: fmt(Math.floor(ef.inicio / 60) % 24, ef.inicio % 60),
+                          fim: fmt(Math.floor(fimMin / 60) % 24, fimMin % 60),
+                          valor: va !== "" ? va : f.valor,
+                        }))
+                        setCalAberto(false)
+                      }
+                    }} />
                 </PopoverContent>
               </Popover>
             </div>
@@ -782,7 +817,7 @@ export function CalendarioAgendamentos({
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Início</Label>
                 <Select value={form.inicio} onValueChange={(v) => {
                   const [ih, im] = v.split(":").map(Number)
-                  const fimMin = Math.min(ih * 60 + im + 60, FIM_MIN)
+                  const fimMin = Math.min(ih * 60 + im + 60, efDialog.fim)
                   const novoFim = fmt(Math.floor(fimMin / 60), fimMin % 60)
                   const [fh, fm] = form.fim.split(":").map(Number)
                   const fimEfetivo = toMin(fh, fm) > toMin(ih, im) ? form.fim : novoFim
@@ -792,7 +827,7 @@ export function CalendarioAgendamentos({
                 }}>
                   <SelectTrigger className="bg-secondary border-border text-foreground h-11"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-popover border-border max-h-56">
-                    {slots.map((s) => <SelectItem key={s.label} value={s.label} className="text-foreground">{s.label}</SelectItem>)}
+                    {slotsForm.map((s) => <SelectItem key={s.label} value={s.label} className="text-foreground">{s.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

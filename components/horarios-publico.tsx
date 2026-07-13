@@ -50,16 +50,20 @@ export function HorariosPublico({
   valor2h,
   horaAbertura = "08:00",
   horaFechamento = "23:00",
+  horaAberturaFds = "08:00",
+  horaFechamentoFds = "22:00",
   whatsapp = "",
 }: {
-  quadraId:       string
-  quadraNome:     string
-  valor1h:        number | null
-  valor1h30:      number | null
-  valor2h:        number | null
-  horaAbertura?:  string
-  horaFechamento?: string
-  whatsapp?:      string
+  quadraId:          string
+  quadraNome:        string
+  valor1h:           number | null
+  valor1h30:         number | null
+  valor2h:           number | null
+  horaAbertura?:     string
+  horaFechamento?:   string
+  horaAberturaFds?:  string
+  horaFechamentoFds?: string
+  whatsapp?:         string
 }) {
   const [date, setDate]             = useState(new Date())
   const [ocupacoes, setOcupacoes]   = useState<Ocupacao[]>([])
@@ -68,9 +72,13 @@ export function HorariosPublico({
 
   const dateStr = format(date, "yyyy-MM-dd")
 
-  // Converte "HH:MM" → minutos; "00:00" vira meia-noite (24h = 1440 min)
-  const INICIO_MIN = toMin(horaAbertura)
-  const FIM_MIN    = horaFechamento === "00:00" ? 24 * 60 : toMin(horaFechamento)
+  // Usa horários de FDS (sáb=6, dom=0) ou semana conforme o dia selecionado
+  const ehFds = date.getDay() === 0 || date.getDay() === 6
+  const aberturaEfetiva  = ehFds ? horaAberturaFds  : horaAbertura
+  const fechamentoEfetivo = ehFds ? horaFechamentoFds : horaFechamento
+
+  const INICIO_MIN = toMin(aberturaEfetiva)
+  const FIM_MIN    = fechamentoEfetivo === "00:00" ? 24 * 60 : toMin(fechamentoEfetivo)
 
   useEffect(() => {
     setSlotAberto(null)
@@ -156,6 +164,7 @@ export function HorariosPublico({
           <p className="text-sm font-semibold text-foreground">{quadraNome}</p>
           <span className="text-xs text-muted-foreground">
             {fmtMin(INICIO_MIN)} – {labelFim}
+            {ehFds && <span className="ml-1.5 text-primary font-medium">(FDS)</span>}
           </span>
         </div>
 

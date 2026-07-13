@@ -58,7 +58,12 @@ export default async function AgendamentosPage({
 
   const quadra = await db.quadra.findFirst({
     where: { tenantId, ativa: true },
-    select: { id: true, nome: true, valor1h: true, valor1h30: true, valor2h: true, horaAbertura: true, horaFechamento: true },
+    select: {
+      id: true, nome: true,
+      valor1h: true, valor1h30: true, valor2h: true,
+      horaAbertura: true, horaFechamento: true,
+      horaAberturaFds: true, horaFechamentoFds: true,
+    },
   })
 
   const precos = {
@@ -80,6 +85,8 @@ export default async function AgendamentosPage({
         clienteFixo={clienteFixo}
         horaAbertura={quadra?.horaAbertura ?? "08:00"}
         horaFechamento={quadra?.horaFechamento ?? "23:00"}
+        horaAberturaFds={quadra?.horaAberturaFds ?? "08:00"}
+        horaFechamentoFds={quadra?.horaFechamentoFds ?? "22:00"}
       />
     </div>
   )

@@ -46,6 +46,8 @@ export type Quadra = {
   ativa: boolean
   horaAbertura: string
   horaFechamento: string
+  horaAberturaFds: string
+  horaFechamentoFds: string
   diasFuncionamento: string
   valor1h: number | null
   valor1h30: number | null
@@ -57,15 +59,17 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
   const [isPending, startTransition] = useTransition()
 
   const [form, setForm] = useState({
-    nome:           quadra.nome,
-    descricao:      quadra.descricao ?? "",
-    endereco:       quadra.endereco ?? "",
-    horaAbertura:   quadra.horaAbertura  ?? "08:00",
-    horaFechamento: quadra.horaFechamento ?? "23:00",
-    diasSel:        (quadra.diasFuncionamento ?? "SEG,TER,QUA,QUI,SEX,SAB,DOM").split(",").map((d) => d.trim()),
-    valor1h:        quadra.valor1h   != null ? String(quadra.valor1h)   : "",
-    valor1h30:      quadra.valor1h30 != null ? String(quadra.valor1h30) : "",
-    valor2h:        quadra.valor2h   != null ? String(quadra.valor2h)   : "",
+    nome:              quadra.nome,
+    descricao:         quadra.descricao ?? "",
+    endereco:          quadra.endereco ?? "",
+    horaAbertura:      quadra.horaAbertura    ?? "08:00",
+    horaFechamento:    quadra.horaFechamento  ?? "23:00",
+    horaAberturaFds:   quadra.horaAberturaFds  ?? "08:00",
+    horaFechamentoFds: quadra.horaFechamentoFds ?? "22:00",
+    diasSel:           (quadra.diasFuncionamento ?? "SEG,TER,QUA,QUI,SEX,SAB,DOM").split(",").map((d) => d.trim()),
+    valor1h:           quadra.valor1h   != null ? String(quadra.valor1h)   : "",
+    valor1h30:         quadra.valor1h30 != null ? String(quadra.valor1h30) : "",
+    valor2h:           quadra.valor2h   != null ? String(quadra.valor2h)   : "",
   })
 
   function toggleDia(key: string) {
@@ -87,6 +91,8 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
         endereco:          form.endereco,
         horaAbertura:      form.horaAbertura,
         horaFechamento:    form.horaFechamento,
+        horaAberturaFds:   form.horaAberturaFds,
+        horaFechamentoFds: form.horaFechamentoFds,
         diasFuncionamento: diasOrdenados.join(","),
         valor1h:           form.valor1h,
         valor1h30:         form.valor1h30,
@@ -136,11 +142,18 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-5">
             <div className="bg-secondary/50 rounded-lg p-3">
-              <p className="text-xs text-muted-foreground">Horário de funcionamento</p>
+              <p className="text-xs text-muted-foreground">Seg – Sex</p>
               <div className="flex items-center gap-1.5 mt-1">
                 <Clock className="w-4 h-4 text-primary" />
                 <span className="text-sm font-semibold text-foreground">
                   {quadra.horaAbertura} – {quadra.horaFechamento}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">Sáb – Dom</p>
+              <div className="flex items-center gap-1.5 mt-1">
+                <Clock className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">
+                  {quadra.horaAberturaFds} – {quadra.horaFechamentoFds}
                 </span>
               </div>
             </div>
@@ -214,7 +227,7 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Horário de funcionamento</Label>
+              <Label className="text-xs text-muted-foreground">Horário — Seg a Sex</Label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Abertura</p>
@@ -231,6 +244,30 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
                     type="time"
                     value={form.horaFechamento}
                     onChange={(e) => setForm((f) => ({ ...f, horaFechamento: e.target.value }))}
+                    className="bg-secondary border-border text-foreground"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Horário — Sáb e Dom</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Abertura</p>
+                  <Input
+                    type="time"
+                    value={form.horaAberturaFds}
+                    onChange={(e) => setForm((f) => ({ ...f, horaAberturaFds: e.target.value }))}
+                    className="bg-secondary border-border text-foreground"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Fechamento</p>
+                  <Input
+                    type="time"
+                    value={form.horaFechamentoFds}
+                    onChange={(e) => setForm((f) => ({ ...f, horaFechamentoFds: e.target.value }))}
                     className="bg-secondary border-border text-foreground"
                   />
                 </div>

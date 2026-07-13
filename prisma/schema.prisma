@@ -125,6 +125,8 @@ model Quadra {
   ativa             Boolean       @default(true)
   horaAbertura      String        @default("08:00")
   horaFechamento    String        @default("23:00")
+  horaAberturaFds   String        @default("08:00")
+  horaFechamentoFds String        @default("22:00")
   diasFuncionamento String        @default("SEG,TER,QUA,QUI,SEX,SAB,DOM")
   valor1h           Decimal?      @db.Decimal(10, 2)
   valor1h30         Decimal?      @db.Decimal(10, 2)

@@ -19,13 +19,17 @@ export async function buscarQuadra() {
     ativa: boolean
     horaAbertura: string
     horaFechamento: string
+    horaAberturaFds: string
+    horaFechamentoFds: string
     diasFuncionamento: string
     valor1h: string | null
     valor1h30: string | null
     valor2h: string | null
   }>>`
     SELECT id, nome, descricao, ativa,
-           "horaAbertura", "horaFechamento", "diasFuncionamento",
+           "horaAbertura", "horaFechamento",
+           "horaAberturaFds", "horaFechamentoFds",
+           "diasFuncionamento",
            valor1h::text, valor1h30::text, valor2h::text
     FROM "Quadra"
     WHERE "tenantId" = ${tenantId}
@@ -48,6 +52,8 @@ export type QuadraData = {
   endereco: string
   horaAbertura: string
   horaFechamento: string
+  horaAberturaFds: string
+  horaFechamentoFds: string
   diasFuncionamento: string
   valor1h: string
   valor1h30: string
@@ -64,7 +70,9 @@ export async function criarQuadra(dados: QuadraData) {
   await db.$executeRaw`
     INSERT INTO "Quadra" (
       id, "tenantId", nome, descricao,
-      "horaAbertura", "horaFechamento", "diasFuncionamento",
+      "horaAbertura", "horaFechamento",
+      "horaAberturaFds", "horaFechamentoFds",
+      "diasFuncionamento",
       valor1h, valor1h30, valor2h, ativa
     ) VALUES (
       gen_random_uuid(),
@@ -73,6 +81,8 @@ export async function criarQuadra(dados: QuadraData) {
       ${dados.descricao.trim() || null},
       ${dados.horaAbertura},
       ${dados.horaFechamento},
+      ${dados.horaAberturaFds},
+      ${dados.horaFechamentoFds},
       ${dados.diasFuncionamento},
       ${toDecimal(dados.valor1h)},
       ${toDecimal(dados.valor1h30)},
@@ -88,14 +98,16 @@ export async function atualizarQuadra(id: string, dados: QuadraData) {
   const tenantId = await getTenantId()
   await db.$executeRaw`
     UPDATE "Quadra" SET
-      nome               = ${dados.nome.trim()},
-      descricao          = ${dados.descricao.trim() || null},
-      "horaAbertura"     = ${dados.horaAbertura},
-      "horaFechamento"   = ${dados.horaFechamento},
-      "diasFuncionamento"= ${dados.diasFuncionamento},
-      valor1h            = ${toDecimal(dados.valor1h)},
-      valor1h30          = ${toDecimal(dados.valor1h30)},
-      valor2h            = ${toDecimal(dados.valor2h)}
+      nome                = ${dados.nome.trim()},
+      descricao           = ${dados.descricao.trim() || null},
+      "horaAbertura"      = ${dados.horaAbertura},
+      "horaFechamento"    = ${dados.horaFechamento},
+      "horaAberturaFds"   = ${dados.horaAberturaFds},
+      "horaFechamentoFds" = ${dados.horaFechamentoFds},
+      "diasFuncionamento" = ${dados.diasFuncionamento},
+      valor1h             = ${toDecimal(dados.valor1h)},
+      valor1h30           = ${toDecimal(dados.valor1h30)},
+      valor2h             = ${toDecimal(dados.valor2h)}
     WHERE id = ${id} AND "tenantId" = ${tenantId}
   `
   revalidatePath("/dashboard/quadras")

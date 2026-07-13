@@ -54,10 +54,25 @@ export default async function ArenaVotocelPage() {
 
       {/* Info rápida */}
       <section className="max-w-5xl mx-auto px-4 py-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-card border border-border rounded-xl p-5 flex gap-4 items-start">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <Clock className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <p className="font-semibold text-sm">Horário de funcionamento</p>
+            {quadra ? (
+              <div className="text-muted-foreground text-sm mt-0.5 space-y-0.5">
+                <p>Seg–Sex: {quadra.horaAbertura} – {quadra.horaFechamento}</p>
+                <p>Sáb–Dom: {quadra.horaAberturaFds ?? "08:00"} – {quadra.horaFechamentoFds ?? "22:00"}</p>
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm mt-0.5">Consulte disponibilidade</p>
+            )}
+          </div>
+        </div>
         {[
-          { icon: Clock,  titulo: "Horário de funcionamento", desc: quadra ? `${quadra.horaAbertura} – ${quadra.horaFechamento}` : "Consulte disponibilidade" },
-          { icon: MapPin, titulo: "Localização",              desc: "Arena Votocel — quadra society" },
-          { icon: Star,   titulo: "Mensalistas",              desc: "Planos mensais com horário fixo garantido" },
+          { icon: MapPin, titulo: "Localização",  desc: "Arena Votocel — quadra society" },
+          { icon: Star,   titulo: "Mensalistas",  desc: "Planos mensais com horário fixo garantido" },
         ].map(({ icon: Icon, titulo, desc }) => (
           <div key={titulo} className="bg-card border border-border rounded-xl p-5 flex gap-4 items-start">
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -106,6 +121,8 @@ export default async function ArenaVotocelPage() {
           valor2h={quadra?.valor2h ?? null}
           horaAbertura={quadra?.horaAbertura ?? "08:00"}
           horaFechamento={quadra?.horaFechamento ?? "23:00"}
+          horaAberturaFds={quadra?.horaAberturaFds ?? "08:00"}
+          horaFechamentoFds={quadra?.horaFechamentoFds ?? "22:00"}
           whatsapp={whatsapp}
         />
       </section>

@@ -14,7 +14,9 @@ export async function buscarTenantPublico(slug: string) {
     select: {
       id: true, nome: true, descricao: true,
       valor1h: true, valor1h30: true, valor2h: true,
-      horaAbertura: true, horaFechamento: true, diasFuncionamento: true,
+      horaAbertura: true, horaFechamento: true,
+      horaAberturaFds: true, horaFechamentoFds: true,
+      diasFuncionamento: true,
     },
     orderBy: { nome: "asc" },
   })

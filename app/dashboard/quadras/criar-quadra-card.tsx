@@ -24,15 +24,17 @@ const DIAS = [
 ]
 
 const FORM_INICIAL = {
-  nome:           "",
-  descricao:      "",
-  endereco:       "",
-  horaAbertura:   "08:00",
-  horaFechamento: "22:00",
-  diasSel:        ["SEG","TER","QUA","QUI","SEX","SAB","DOM"],
-  valor1h:        "",
-  valor1h30:      "",
-  valor2h:        "",
+  nome:              "",
+  descricao:         "",
+  endereco:          "",
+  horaAbertura:      "08:00",
+  horaFechamento:    "22:00",
+  horaAberturaFds:   "08:00",
+  horaFechamentoFds: "22:00",
+  diasSel:           ["SEG","TER","QUA","QUI","SEX","SAB","DOM"],
+  valor1h:           "",
+  valor1h30:         "",
+  valor2h:           "",
 }
 
 export function CriarQuadraCard() {
@@ -59,6 +61,8 @@ export function CriarQuadraCard() {
         endereco:          form.endereco,
         horaAbertura:      form.horaAbertura,
         horaFechamento:    form.horaFechamento,
+        horaAberturaFds:   form.horaAberturaFds,
+        horaFechamentoFds: form.horaFechamentoFds,
         diasFuncionamento: diasOrdenados.join(","),
         valor1h:           form.valor1h,
         valor1h30:         form.valor1h30,
@@ -116,7 +120,7 @@ export function CriarQuadraCard() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Horário de funcionamento</Label>
+              <Label className="text-xs text-muted-foreground">Horário — Seg a Sex</Label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Abertura</p>
@@ -133,6 +137,30 @@ export function CriarQuadraCard() {
                     type="time"
                     value={form.horaFechamento}
                     onChange={(e) => setForm((f) => ({ ...f, horaFechamento: e.target.value }))}
+                    className="bg-secondary border-border text-foreground"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Horário — Sáb e Dom</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Abertura</p>
+                  <Input
+                    type="time"
+                    value={form.horaAberturaFds}
+                    onChange={(e) => setForm((f) => ({ ...f, horaAberturaFds: e.target.value }))}
+                    className="bg-secondary border-border text-foreground"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Fechamento</p>
+                  <Input
+                    type="time"
+                    value={form.horaFechamentoFds}
+                    onChange={(e) => setForm((f) => ({ ...f, horaFechamentoFds: e.target.value }))}
                     className="bg-secondary border-border text-foreground"
                   />
                 </div>
