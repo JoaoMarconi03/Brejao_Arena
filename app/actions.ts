@@ -9,20 +9,25 @@ export async function buscarTenantPublico(slug: string) {
   const tenant = rows[0]
   if (!tenant) return null
 
-  const quadras = await db.quadra.findMany({
-    where: { tenantId: tenant.id, ativa: true },
-    select: {
-      id: true, nome: true, descricao: true,
-      valor1h: true, valor1h30: true, valor2h: true,
-      horaAbertura: true, horaFechamento: true,
-      horaAberturaFds: true, horaFechamentoFds: true,
-      diasFuncionamento: true,
-    },
-    orderBy: { nome: "asc" },
-  })
+  const quadrasRaw = await db.$queryRaw<Array<{
+    id: string; nome: string; descricao: string | null
+    valor1h: string | null; valor1h30: string | null; valor2h: string | null
+    horaAbertura: string; horaFechamento: string
+    horaAberturaFds: string; horaFechamentoFds: string
+    diasFuncionamento: string
+  }>>`
+    SELECT id, nome, descricao,
+           "horaAbertura", "horaFechamento",
+           "horaAberturaFds", "horaFechamentoFds",
+           "diasFuncionamento",
+           valor1h::text, valor1h30::text, valor2h::text
+    FROM "Quadra"
+    WHERE "tenantId" = ${tenant.id} AND ativa = true
+    ORDER BY nome ASC
+  `
   return {
     ...tenant,
-    quadras: quadras.map((q) => ({
+    quadras: quadrasRaw.map((q) => ({
       ...q,
       valor1h:   q.valor1h   ? Number(q.valor1h)   : null,
       valor1h30: q.valor1h30 ? Number(q.valor1h30) : null,
