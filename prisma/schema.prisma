@@ -53,18 +53,19 @@ enum Role {
 // ─────────────────────────────────────────────
 
 model Cliente {
-  id           String        @id @default(cuid())
-  nome         String
-  telefone     String?
-  email        String?
-  usuarioId    String?       @unique
-  usuario      Usuario?      @relation(fields: [usuarioId], references: [id])
-  tenantId     String
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  assinaturas  Assinatura[]
-  agendamentos Agendamento[]
-  conta        ContaFiado?
-  criadoEm     DateTime      @default(now())
+  id                String             @id @default(cuid())
+  nome              String
+  telefone          String?
+  email             String?
+  usuarioId         String?            @unique
+  usuario           Usuario?           @relation(fields: [usuarioId], references: [id])
+  tenantId          String
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  assinaturas       Assinatura[]
+  agendamentos      Agendamento[]
+  conta             ContaFiado?
+  alunosAgendamento AlunoAgendamento[]
+  criadoEm          DateTime           @default(now())
 }
 
 // ─────────────────────────────────────────────
@@ -135,21 +136,39 @@ model Quadra {
 }
 
 model Agendamento {
-  id                    String            @id @default(cuid())
+  id                    String             @id @default(cuid())
   inicio                DateTime
   fim                   DateTime
-  status                StatusAgendamento @default(PENDENTE)
-  tipo                  TipoAgendamento   @default(AVULSO)
-  valor                 Decimal?          @db.Decimal(10, 2)
+  status                StatusAgendamento  @default(PENDENTE)
+  tipo                  TipoAgendamento    @default(AVULSO)
+  valor                 Decimal?           @db.Decimal(10, 2)
   observacao            String?
+  nomeTurma             String?
   quadraId              String
   clienteId             String?
-  quadra                Quadra            @relation(fields: [quadraId], references: [id])
-  cliente               Cliente?          @relation(fields: [clienteId], references: [id])
-  criadoEm              DateTime          @default(now())
-  pagamentoRegistrado   Boolean           @default(false)
+  quadra                Quadra             @relation(fields: [quadraId], references: [id])
+  cliente               Cliente?           @relation(fields: [clienteId], references: [id])
+  alunos                AlunoAgendamento[]
+  criadoEm              DateTime           @default(now())
+  pagamentoRegistrado   Boolean            @default(false)
   pagamentoRegistradoEm DateTime?
   formaPagamento        FormaPagamento?
+}
+
+model AlunoAgendamento {
+  id            String         @id @default(cuid())
+  agendamentoId String
+  agendamento   Agendamento    @relation(fields: [agendamentoId], references: [id], onDelete: Cascade)
+  clienteId     String?
+  cliente       Cliente?       @relation(fields: [clienteId], references: [id])
+  nome          String
+  tipoPlano     TipoPlanoAluno
+  valor         Decimal        @db.Decimal(10, 2)
+}
+
+enum TipoPlanoAluno {
+  AVULSO
+  MENSALISTA
 }
 
 enum StatusAgendamento {
@@ -163,6 +182,7 @@ enum StatusAgendamento {
 enum TipoAgendamento {
   AVULSO
   MENSALISTA
+  AULA
 }
 
 // ─────────────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useState, useEffect, type ReactNode } from "react"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
@@ -23,8 +23,18 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen]   = useState(false)
   const iniciais = getIniciais(tenantNome)
 
+  useEffect(() => {
+    const el = document.documentElement
+    if (tenantSlug === "arena-brothers") {
+      el.classList.add("theme-brothers")
+    } else {
+      el.classList.remove("theme-brothers")
+    }
+    return () => el.classList.remove("theme-brothers")
+  }, [tenantSlug])
+
   return (
-    <div className={tenantSlug === "arena-brothers" ? "flex h-screen overflow-hidden theme-brothers" : "flex h-screen overflow-hidden"}>
+    <div className="flex h-screen overflow-hidden">
 
       {/* ── Sidebar desktop — no fluxo flex, não fixed ────────────── */}
       <aside

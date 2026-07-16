@@ -20,17 +20,28 @@ async function verificarAdmin() {
 
 // ── Leitura ──────────────────────────────────────────────────────────────────
 
+export type TipoAg = "AVULSO" | "MENSALISTA" | "AULA"
+
 export type AgendamentoSemana = {
   id:          string
   clienteNome: string
   inicioHora:  string
   fimHora:     string
   inicioData:  string
-  tipo:        "AVULSO" | "MENSALISTA"
+  tipo:        TipoAg
+  nomeTurma:   string | null
   valor:       number
   status:      "CONFIRMADO" | "PENDENTE" | "CANCELADO" | "PAGO"
   inicio:      { h: number; m: number }
   duracaoMin:  number
+}
+
+export type AlunoAg = {
+  id:        string
+  nome:      string
+  clienteId: string | null
+  tipoPlano: "AVULSO" | "MENSALISTA"
+  valor:     number
 }
 
 export async function buscarAgendamentosPorSemana(dataInicio: string): Promise<AgendamentoSemana[]> {
@@ -40,6 +51,7 @@ export async function buscarAgendamentosPorSemana(dataInicio: string): Promise<A
 
   const rows = await db.$queryRaw<Array<{
     id: string; observacao: string | null; tipo: string
+    nomeTurma: string | null
     valor: string | null; status: string; clienteNome: string | null
     inicioHora: string; fimHora: string; inicioData: string
   }>>`
@@ -47,6 +59,7 @@ export async function buscarAgendamentosPorSemana(dataInicio: string): Promise<A
       ag.id,
       ag.observacao,
       ag.tipo::text,
+      ag."nomeTurma",
       ag.valor::text,
       ag.status::text,
       cl.nome AS "clienteNome",
@@ -71,11 +84,12 @@ export async function buscarAgendamentosPorSemana(dataInicio: string): Promise<A
     const fimMin   = fimRaw === 0 ? 24 * 60 : fimRaw
     return {
       id:          r.id,
-      clienteNome: r.clienteNome ?? r.observacao ?? "Avulso",
+      clienteNome: r.tipo === "AULA" ? (r.nomeTurma ?? "Aula") : (r.clienteNome ?? r.observacao ?? "Avulso"),
       inicioHora:  r.inicioHora,
       fimHora:     r.fimHora,
       inicioData:  r.inicioData,
-      tipo:        r.tipo as "AVULSO" | "MENSALISTA",
+      tipo:        r.tipo as TipoAg,
+      nomeTurma:   r.nomeTurma ?? null,
       valor:       r.valor ? Number(r.valor) : 0,
       status:      r.status as "CONFIRMADO" | "PENDENTE" | "CANCELADO" | "PAGO",
       inicio:      { h: ih, m: im },
@@ -234,53 +248,42 @@ function calcFim(horaInicio: string, duracaoMin: number) {
 export async function criarAgendamentoAdmin(dados: {
   quadraId:    string
   nomeCliente: string
-  clienteId?:  string   // opcional — vincula ao cliente registrado
-  data:        string   // "YYYY-MM-DD"
-  horaInicio:  string   // "HH:MM"
+  clienteId?:  string
+  nomeTurma?:  string
+  data:        string
+  horaInicio:  string
   duracaoMin:  number
-  tipo:        "AVULSO" | "MENSALISTA"
+  tipo:        TipoAg
   valor:       number
-}) {
+}): Promise<string> {
   await verificarAdmin()
 
   const horaFim   = calcFim(dados.horaInicio, dados.duracaoMin)
   const inicioStr = `${dados.data} ${dados.horaInicio}:00`
   const fimStr    = `${dados.data} ${horaFim}:00`
+  const nomeTurma = dados.nomeTurma?.trim() || null
 
-  if (dados.clienteId) {
-    await db.$executeRaw`
-      INSERT INTO "Agendamento" (id, inicio, fim, status, tipo, "quadraId", "clienteId", observacao, valor, "criadoEm")
-      VALUES (
-        gen_random_uuid(),
-        ${inicioStr}::timestamp,
-        ${fimStr}::timestamp,
-        'CONFIRMADO'::"StatusAgendamento",
-        ${dados.tipo}::"TipoAgendamento",
-        ${dados.quadraId},
-        ${dados.clienteId},
-        ${dados.nomeCliente},
-        ${dados.valor}::decimal,
-        NOW()
-      )
-    `
-  } else {
-    await db.$executeRaw`
-      INSERT INTO "Agendamento" (id, inicio, fim, status, tipo, "quadraId", observacao, valor, "criadoEm")
-      VALUES (
-        gen_random_uuid(),
-        ${inicioStr}::timestamp,
-        ${fimStr}::timestamp,
-        'CONFIRMADO'::"StatusAgendamento",
-        ${dados.tipo}::"TipoAgendamento",
-        ${dados.quadraId},
-        ${dados.nomeCliente},
-        ${dados.valor}::decimal,
-        NOW()
-      )
-    `
-  }
+  const rows = await db.$queryRaw<[{ id: string }]>`
+    INSERT INTO "Agendamento"
+      (id, inicio, fim, status, tipo, "quadraId", "clienteId", observacao, "nomeTurma", valor, "criadoEm")
+    VALUES (
+      gen_random_uuid(),
+      ${inicioStr}::timestamp,
+      ${fimStr}::timestamp,
+      'CONFIRMADO'::"StatusAgendamento",
+      ${dados.tipo}::"TipoAgendamento",
+      ${dados.quadraId},
+      ${dados.clienteId ?? null},
+      ${dados.tipo === "AULA" ? nomeTurma : dados.nomeCliente},
+      ${nomeTurma},
+      ${dados.valor}::decimal,
+      NOW()
+    )
+    RETURNING id
+  `
 
   revalidatePath("/dashboard/agendamentos")
+  return rows[0].id
 }
 
 export async function criarAgendamentosMensaisAdmin(dados: {
@@ -343,5 +346,81 @@ export async function criarAgendamentosMensaisAdmin(dados: {
     }
   }
 
+  revalidatePath("/dashboard/agendamentos")
+}
+
+// ── Alunos de aula ────────────────────────────────────────────────────────────
+
+export async function buscarAlunosAgendamento(agendamentoId: string): Promise<AlunoAg[]> {
+  await getSession()
+  const rows = await db.$queryRaw<Array<{
+    id: string; nome: string; clienteId: string | null; tipoPlano: string; valor: string
+  }>>`
+    SELECT id, nome, "clienteId", "tipoPlano"::text, valor::text
+    FROM "AlunoAgendamento"
+    WHERE "agendamentoId" = ${agendamentoId}
+    ORDER BY nome ASC
+  `
+  return rows.map((r) => ({
+    id:        r.id,
+    nome:      r.nome,
+    clienteId: r.clienteId,
+    tipoPlano: r.tipoPlano as "AVULSO" | "MENSALISTA",
+    valor:     Number(r.valor),
+  }))
+}
+
+export async function buscarClientesParaAula() {
+  const session = await getSession()
+  const tenantId = (session.user as any)?.tenantId
+  const rows = await db.$queryRaw<Array<{ id: string; nome: string; telefone: string | null }>>`
+    SELECT id, nome, telefone FROM "Cliente"
+    WHERE "tenantId" = ${tenantId}
+    ORDER BY nome ASC
+  `
+  return rows
+}
+
+export async function adicionarAlunoAgendamento(data: {
+  agendamentoId: string
+  clienteId?:    string
+  nome:          string
+  tipoPlano:     "AVULSO" | "MENSALISTA"
+  valor:         number
+}) {
+  await getSession()
+  await db.$executeRaw`
+    INSERT INTO "AlunoAgendamento" (id, "agendamentoId", "clienteId", nome, "tipoPlano", valor)
+    VALUES (
+      gen_random_uuid(),
+      ${data.agendamentoId},
+      ${data.clienteId ?? null},
+      ${data.nome.trim()},
+      ${data.tipoPlano}::"TipoPlanoAluno",
+      ${data.valor}::decimal
+    )
+  `
+  revalidatePath("/dashboard/agendamentos")
+}
+
+export async function atualizarAlunoAgendamento(id: string, data: {
+  nome:      string
+  tipoPlano: "AVULSO" | "MENSALISTA"
+  valor:     number
+}) {
+  await getSession()
+  await db.$executeRaw`
+    UPDATE "AlunoAgendamento"
+    SET nome = ${data.nome.trim()},
+        "tipoPlano" = ${data.tipoPlano}::"TipoPlanoAluno",
+        valor = ${data.valor}::decimal
+    WHERE id = ${id}
+  `
+  revalidatePath("/dashboard/agendamentos")
+}
+
+export async function removerAlunoAgendamento(id: string) {
+  await getSession()
+  await db.$executeRaw`DELETE FROM "AlunoAgendamento" WHERE id = ${id}`
   revalidatePath("/dashboard/agendamentos")
 }

@@ -8,6 +8,7 @@ import { ptBR } from "date-fns/locale"
 import {
   ChevronLeft, ChevronRight, Plus, CalendarDays,
   Repeat2, AlertTriangle, CheckCircle2, Trash2, Undo2,
+  Users, UserPlus, Pencil, Search, Phone,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -18,7 +19,13 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   buscarAgendamentosPorSemana,
+  buscarAlunosAgendamento,
+  buscarClientesParaAula,
+  adicionarAlunoAgendamento,
+  atualizarAlunoAgendamento,
+  removerAlunoAgendamento,
   type AgendamentoSemana,
+  type AlunoAg,
   criarAgendamentoAdmin,
   criarAgendamentosMensaisAdmin,
   editarAgendamento,
@@ -35,9 +42,11 @@ const SLOT_H = 56   // px por bloco de 30 min
 
 type Precos = { valor1h?: number; valor1h30?: number; valor2h?: number }
 type FormState = {
-  tipo: "AVULSO" | "MENSALISTA"; cliente: string; clienteId: string | null
-  dataSel: Date; inicio: string; fim: string; valor: string
+  tipo: "AVULSO" | "MENSALISTA" | "AULA"; cliente: string; clienteId: string | null
+  nomeTurma: string; dataSel: Date; inicio: string; fim: string; valor: string
 }
+
+type ClienteSimples = { id: string; nome: string; telefone: string | null }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -162,8 +171,19 @@ export function CalendarioAgendamentos({
   const [sucesso, setSucesso]           = useState("")
   const [calAberto, setCalAberto]       = useState(false)
 
+  // ── Estado para gerenciar alunos de aula ──
+  const [alunosDialogAg,  setAlunosDialogAg]  = useState<AgendamentoSemana | null>(null)
+  const [alunos,          setAlunos]          = useState<AlunoAg[]>([])
+  const [clientesAula,    setClientesAula]    = useState<ClienteSimples[]>([])
+  const [addAlunoOpen,    setAddAlunoOpen]    = useState(false)
+  const [editAluno,       setEditAluno]       = useState<AlunoAg | null>(null)
+  const [buscaAluno,      setBuscaAluno]      = useState("")
+  const [modoAluno,       setModoAluno]       = useState<"buscar" | "novo">("buscar")
+  const [formAluno,       setFormAluno]       = useState({ nome: "", clienteId: "", tipoPlano: "AVULSO" as "AVULSO" | "MENSALISTA", valor: "" })
+  const [salvandoAluno,   setSalvandoAluno]   = useState(false)
+
   const [form, setForm] = useState<FormState>({
-    tipo: "AVULSO", cliente: "", clienteId: null, dataSel: new Date(),
+    tipo: "AVULSO", cliente: "", clienteId: null, nomeTurma: "", dataSel: new Date(),
     inicio: horaAbertura,
     fim: fmt(Math.floor(Math.min(INICIO_MIN_SEM + 60, FIM_MIN_SEM) / 60) % 24, Math.min(INICIO_MIN_SEM + 60, FIM_MIN_SEM) % 60),
     valor: "",
@@ -202,8 +222,17 @@ export function CalendarioAgendamentos({
   const iniTotalMin = Number(iniParts[0]) * 60 + Number(iniParts[1] ?? 0)
   const fimTotalMin = Number(fimParts[0]) * 60 + Number(fimParts[1] ?? 0)
   const fimValido       = fimTotalMin > iniTotalMin
-  const formValido      = !!form.cliente.trim() && fimValido
+  const formValido      = form.tipo === "AULA" ? !!form.nomeTurma.trim() && fimValido : !!form.cliente.trim() && fimValido
   const datasMensais    = form.tipo === "MENSALISTA" ? gerarDatasMensais(form.dataSel) : []
+
+  const clientesFiltrados = buscaAluno
+    ? clientesAula.filter((c) =>
+        c.nome.toLowerCase().includes(buscaAluno.toLowerCase()) ||
+        (c.telefone ?? "").includes(buscaAluno)
+      )
+    : clientesAula
+
+  const totalAlunos = alunos.reduce((s, a) => s + a.valor, 0)
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -219,6 +248,7 @@ export function CalendarioAgendamentos({
     const va = valorParaDuracao(fimMin - ef.inicio, precos)
     setForm({
       tipo: "AVULSO", cliente: clienteFixo?.nome ?? "", clienteId: clienteFixo?.id ?? null,
+      nomeTurma: "",
       dataSel: d,
       inicio: fmt(Math.floor(ef.inicio / 60) % 24, ef.inicio % 60),
       fim: fmt(Math.floor(fimMin / 60) % 24, fimMin % 60),
@@ -228,14 +258,78 @@ export function CalendarioAgendamentos({
   }
 
   function abrirDialogEditar(ag: AgendamentoSemana) {
+    if (ag.tipo === "AULA") {
+      abrirAlunosDialog(ag)
+      return
+    }
     const fimMin = toMin(ag.inicio.h, ag.inicio.m) + ag.duracaoMin
     setForm({
       tipo: ag.tipo, cliente: ag.clienteNome, clienteId: null,
+      nomeTurma: ag.nomeTurma ?? "",
       dataSel: localDate(ag.inicioData), inicio: ag.inicioHora,
       fim: fmt(Math.floor(fimMin / 60), fimMin % 60),
       valor: ag.valor > 0 ? String(ag.valor) : "",
     })
     setEditandoId(ag.id); setErro(""); setSucesso(""); setDialogOpen(true)
+  }
+
+  async function abrirAlunosDialog(ag: AgendamentoSemana) {
+    setAlunosDialogAg(ag)
+    const [lista, clis] = await Promise.all([
+      buscarAlunosAgendamento(ag.id),
+      buscarClientesParaAula(),
+    ])
+    setAlunos(lista)
+    setClientesAula(clis)
+  }
+
+  function abrirAddAluno(aluno?: AlunoAg) {
+    setBuscaAluno("")
+    setModoAluno("buscar")
+    if (aluno) {
+      setEditAluno(aluno)
+      setFormAluno({ nome: aluno.nome, clienteId: aluno.clienteId ?? "", tipoPlano: aluno.tipoPlano, valor: String(aluno.valor) })
+    } else {
+      setEditAluno(null)
+      setFormAluno({ nome: "", clienteId: "", tipoPlano: "AVULSO", valor: "" })
+    }
+    setAddAlunoOpen(true)
+  }
+
+  async function salvarAluno() {
+    if (!alunosDialogAg || !formAluno.nome.trim() || !formAluno.valor) return
+    setSalvandoAluno(true)
+    try {
+      const valor = parseFloat(formAluno.valor.replace(",", "."))
+      if (editAluno) {
+        await atualizarAlunoAgendamento(editAluno.id, { nome: formAluno.nome, tipoPlano: formAluno.tipoPlano, valor })
+      } else {
+        await adicionarAlunoAgendamento({
+          agendamentoId: alunosDialogAg.id,
+          clienteId: formAluno.clienteId || undefined,
+          nome: formAluno.nome,
+          tipoPlano: formAluno.tipoPlano,
+          valor,
+        })
+      }
+      const lista = await buscarAlunosAgendamento(alunosDialogAg.id)
+      setAlunos(lista)
+      setAddAlunoOpen(false)
+    } finally {
+      setSalvandoAluno(false)
+    }
+  }
+
+  async function excluirAluno(id: string) {
+    if (!alunosDialogAg) return
+    await removerAlunoAgendamento(id)
+    const lista = await buscarAlunosAgendamento(alunosDialogAg.id)
+    setAlunos(lista)
+  }
+
+  function selecionarClienteParaAluno(c: ClienteSimples) {
+    setFormAluno((f) => ({ ...f, nome: c.nome, clienteId: c.id }))
+    setModoAluno("novo")
   }
 
   async function desfazerPagamento(id: string) {
@@ -306,6 +400,25 @@ export function CalendarioAgendamentos({
           duracaoMin,
           valor: valorNum,
         })
+      } else if (form.tipo === "AULA") {
+        const agId = await criarAgendamentoAdmin({
+          quadraId,
+          nomeCliente: form.nomeTurma.trim(),
+          nomeTurma:   form.nomeTurma.trim(),
+          data:        dataISO,
+          horaInicio:  form.inicio,
+          duracaoMin,
+          tipo:        "AULA",
+          valor:       0,
+        })
+        const novos = await buscarAgendamentosPorSemana(weekKey)
+        setAgendamentos(novos)
+        setEditandoId(null)
+        setSalvando(false)
+        // Abre direto o dialog de alunos após criar a aula
+        const agCriado = novos.find((a) => a.id === agId)
+        if (agCriado) abrirAlunosDialog(agCriado)
+        return
       } else if (form.tipo === "AVULSO") {
         await criarAgendamentoAdmin({
           quadraId,
@@ -452,17 +565,26 @@ export function CalendarioAgendamentos({
                       }`} />
                       <div className="flex-1 min-w-0">
                         {/* Nome */}
-                        <p className="font-bold text-foreground text-base leading-tight">{ag.clienteNome}</p>
+                        <div className="flex items-center gap-1.5">
+                          {ag.tipo === "AULA" && <Users className="w-4 h-4 text-violet-600 shrink-0" />}
+                          <p className="font-bold text-foreground text-base leading-tight truncate">{ag.clienteNome}</p>
+                        </div>
                         {/* Horário + duração */}
                         <p className="text-sm font-mono text-muted-foreground mt-0.5">
                           {ag.inicioHora} – {ag.fimHora}
                           <span className="text-xs ml-2 font-sans">({duracaoLabel})</span>
                         </p>
-                        {/* Status + valor */}
+                        {/* Status + tipo + valor */}
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[ag.status] ?? STATUS_BADGE.CONFIRMADO}`}>
-                            {STATUS_LABEL[ag.status] ?? ag.status}
-                          </span>
+                          {ag.tipo === "AULA" ? (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                              Aula
+                            </span>
+                          ) : (
+                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[ag.status] ?? STATUS_BADGE.CONFIRMADO}`}>
+                              {STATUS_LABEL[ag.status] ?? ag.status}
+                            </span>
+                          )}
                           {ag.valor > 0 && (
                             <span className="text-xs text-muted-foreground font-medium">
                               R$ {ag.valor.toFixed(2).replace(".", ",")}
@@ -599,26 +721,34 @@ export function CalendarioAgendamentos({
                       const isExc       = excluindo === ag.id
                       const isPaying    = pagandoId === ag.id
                       const isReverting = revertendoId === ag.id
+                      const isAula      = ag.tipo === "AULA"
+                      const blockClass  = isAula
+                        ? "bg-violet-500/20 border-l-2 border-violet-600 text-violet-700 dark:text-violet-300"
+                        : (STATUS_BG[ag.status] ?? STATUS_BG.CONFIRMADO)
 
                       return (
                         <div
                           key={ag.id}
                           style={{ top: top + 1, height: height - 2, left: 2, right: 2, position: "absolute", zIndex: 10 }}
                           onClick={(e) => { e.stopPropagation(); abrirDialogEditar(ag) }}
-                          className={`rounded-md overflow-hidden cursor-pointer group select-none transition-opacity ${STATUS_BG[ag.status] ?? STATUS_BG.CONFIRMADO} ${(isExc || isPaying || isReverting) ? "opacity-40 pointer-events-none" : ""}`}
+                          className={`rounded-md overflow-hidden cursor-pointer group select-none transition-opacity ${blockClass} ${(isExc || isPaying || isReverting) ? "opacity-40 pointer-events-none" : ""}`}
                         >
                           <div className="px-1.5 py-1 h-full flex flex-col justify-center relative">
-                            <p className={`font-semibold leading-tight truncate pr-8 ${tiny ? "text-[10px]" : "text-xs"}`}>
-                              {ag.clienteNome}
-                            </p>
+                            <div className={`flex items-center gap-0.5 font-semibold leading-tight truncate pr-8 ${tiny ? "text-[10px]" : "text-xs"}`}>
+                              {isAula && <Users className="w-2.5 h-2.5 shrink-0" />}
+                              <span className="truncate">{ag.clienteNome}</span>
+                            </div>
                             {!tiny && (
                               <p className="font-mono text-[10px] opacity-70 mt-0.5">{ag.inicioHora}–{ag.fimHora}</p>
                             )}
                             {/* Label de status no card (só para PAGO e PENDENTE) */}
-                            {!tiny && ag.status !== "CONFIRMADO" && (
+                            {!tiny && !isAula && ag.status !== "CONFIRMADO" && (
                               <p className="text-[9px] font-bold uppercase tracking-wider opacity-80 mt-0.5">
                                 {STATUS_LABEL[ag.status]}
                               </p>
+                            )}
+                            {!tiny && isAula && (
+                              <p className="text-[9px] font-bold uppercase tracking-wider opacity-80 mt-0.5">AULA</p>
                             )}
                             {/* Botão de pagar ou desfazer pagamento */}
                             {ag.status === "PAGO" ? (
@@ -736,6 +866,216 @@ export function CalendarioAgendamentos({
         </DialogContent>
       </Dialog>
 
+      {/* Dialog: Gerenciar alunos da aula */}
+      <Dialog open={!!alunosDialogAg} onOpenChange={(o) => { if (!o) setAlunosDialogAg(null) }}>
+        <DialogContent className="bg-card border-border sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Users className="w-4 h-4 text-violet-600" />
+              {alunosDialogAg?.clienteNome}
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              {alunosDialogAg?.inicioHora}–{alunosDialogAg?.fimHora} · {alunosDialogAg?.inicioData}
+            </p>
+          </DialogHeader>
+
+          {/* Resumo */}
+          <div className="flex items-center justify-between px-1 shrink-0">
+            <p className="text-sm text-muted-foreground">{alunos.length} aluno{alunos.length !== 1 ? "s" : ""}</p>
+            {alunos.length > 0 && (
+              <p className="text-sm font-bold text-foreground">
+                Total: R$ {totalAlunos.toFixed(2).replace(".", ",")}
+              </p>
+            )}
+          </div>
+
+          {/* Lista */}
+          <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
+            {alunos.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+                <Users className="w-8 h-8 opacity-20" />
+                <p className="text-sm">Nenhum aluno adicionado</p>
+              </div>
+            ) : (
+              alunos.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 p-3 rounded-xl bg-secondary/50 border border-border">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-foreground truncate">{a.nome}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                        a.tipoPlano === "MENSALISTA"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                      }`}>
+                        {a.tipoPlano === "MENSALISTA" ? "Mensalista" : "Avulso"}
+                      </span>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        R$ {a.valor.toFixed(2).replace(".", ",")}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    title="Editar"
+                    onClick={() => abrirAddAluno(a)}
+                    className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Remover"
+                    onClick={() => excluirAluno(a.id)}
+                    className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="pt-2 border-t border-border shrink-0">
+            <Button onClick={() => abrirAddAluno()} className="w-full gap-2">
+              <UserPlus className="w-4 h-4" />
+              Adicionar aluno
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Adicionar / Editar aluno */}
+      <Dialog open={addAlunoOpen} onOpenChange={(o) => { if (!o) setAddAlunoOpen(false) }}>
+        <DialogContent className="bg-card border-border sm:max-w-sm max-h-[85vh] overflow-hidden flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">
+              {editAluno ? "Editar aluno" : "Adicionar aluno"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Seletor buscar / novo — só para adição */}
+          {!editAluno && (
+            <div className="flex rounded-xl border border-border overflow-hidden shrink-0">
+              <button
+                type="button"
+                onClick={() => setModoAluno("buscar")}
+                className={`flex-1 py-2 text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors ${modoAluno === "buscar" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
+              >
+                <Search className="w-3.5 h-3.5" />Buscar cadastrado
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoAluno("novo")}
+                className={`flex-1 py-2 text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors ${modoAluno === "novo" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />Novo
+              </button>
+            </div>
+          )}
+
+          {/* Modo buscar */}
+          {modoAluno === "buscar" && !editAluno ? (
+            <div className="flex flex-col flex-1 min-h-0 gap-2">
+              <Input
+                placeholder="Buscar por nome ou telefone..."
+                value={buscaAluno}
+                onChange={(e) => setBuscaAluno(e.target.value)}
+                className="bg-secondary border-border h-10 shrink-0"
+              />
+              <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
+                {clientesFiltrados.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">Nenhum cliente encontrado</p>
+                ) : (
+                  clientesFiltrados.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => selecionarClienteParaAluno(c)}
+                      className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-secondary text-left transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-bold text-primary">
+                          {c.nome.split(" ").slice(0, 2).map((p) => p[0]).join("").toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{c.nome}</p>
+                        {c.telefone && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Phone className="w-3 h-3" />{c.telefone}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Modo formulário (novo ou editar) */
+            <div className="space-y-4 flex-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome</Label>
+                <Input
+                  placeholder="Nome do aluno"
+                  value={formAluno.nome}
+                  onChange={(e) => setFormAluno((f) => ({ ...f, nome: e.target.value }))}
+                  className="bg-secondary border-border h-10"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Plano</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["AVULSO", "MENSALISTA"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setFormAluno((f) => ({ ...f, tipoPlano: p }))}
+                      className={`py-2.5 px-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                        formAluno.tipoPlano === p
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"
+                      }`}
+                    >
+                      {p === "AVULSO" ? "Avulso" : "Mensalista"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Valor (R$)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">R$</span>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={formAluno.valor}
+                    onChange={(e) => setFormAluno((f) => ({ ...f, valor: e.target.value }))}
+                    className="bg-secondary border-border h-10 pl-9"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1 border-border" onClick={() => setAddAlunoOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1"
+                  disabled={!formAluno.nome.trim() || !formAluno.valor || salvandoAluno}
+                  onClick={salvarAluno}
+                >
+                  {salvandoAluno ? "Salvando..." : editAluno ? "Salvar" : "Adicionar"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog: Novo / Editar */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditandoId(null); setErro("") } }}>
         <DialogContent className="bg-card border-border w-full max-w-md mx-auto max-h-[92vh] overflow-y-auto">
@@ -750,17 +1090,18 @@ export function CalendarioAgendamentos({
             {!editandoId && (
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</Label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   {([
                     { value: "AVULSO",     label: "Avulso",     desc: "Dia único",  Icon: CalendarDays },
                     { value: "MENSALISTA", label: "Mensalista", desc: "Todo o mês", Icon: Repeat2      },
+                    { value: "AULA",       label: "Aula",       desc: "Com alunos", Icon: Users        },
                   ] as const).map(({ value, label, desc, Icon }) => (
                     <button key={value} type="button" onClick={() => setForm((f) => ({ ...f, tipo: value }))}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${form.tipo === value ? "border-primary bg-primary/10 text-foreground" : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"}`}>
-                      <Icon className={`w-5 h-5 ${form.tipo === value ? "text-primary" : ""}`} />
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${form.tipo === value ? "border-primary bg-primary/10 text-foreground" : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"}`}>
+                      <Icon className={`w-4 h-4 ${form.tipo === value ? "text-primary" : ""}`} />
                       <div className="text-center">
-                        <p className="font-semibold text-sm leading-tight">{label}</p>
-                        <p className="text-xs opacity-60 mt-0.5">{desc}</p>
+                        <p className="font-semibold text-xs leading-tight">{label}</p>
+                        <p className="text-[10px] opacity-60 mt-0.5">{desc}</p>
                       </div>
                     </button>
                   ))}
@@ -768,19 +1109,29 @@ export function CalendarioAgendamentos({
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome do Cliente</Label>
-              {form.clienteId ? (
-                <div className="flex items-center gap-2 h-11 px-3 rounded-md border border-primary/40 bg-primary/5">
-                  <span className="text-sm font-semibold text-foreground flex-1 truncate">{form.cliente}</span>
-                  <span className="text-[10px] font-semibold uppercase text-primary bg-primary/10 px-1.5 py-0.5 rounded-md shrink-0">Vinculado</span>
-                </div>
-              ) : (
-                <Input placeholder="Ex: João Silva" value={form.cliente}
-                  onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}
+            {form.tipo === "AULA" ? (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome da turma</Label>
+                <Input placeholder="Ex: Turma Feminina, Iniciantes..." value={form.nomeTurma}
+                  onChange={(e) => setForm((f) => ({ ...f, nomeTurma: e.target.value }))}
                   className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11" />
-              )}
-            </div>
+                <p className="text-xs text-muted-foreground">Após criar, você poderá adicionar os alunos com seus planos e valores.</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome do Cliente</Label>
+                {form.clienteId ? (
+                  <div className="flex items-center gap-2 h-11 px-3 rounded-md border border-primary/40 bg-primary/5">
+                    <span className="text-sm font-semibold text-foreground flex-1 truncate">{form.cliente}</span>
+                    <span className="text-[10px] font-semibold uppercase text-primary bg-primary/10 px-1.5 py-0.5 rounded-md shrink-0">Vinculado</span>
+                  </div>
+                ) : (
+                  <Input placeholder="Ex: João Silva" value={form.cliente}
+                    onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}
+                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11" />
+                )}
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Data</Label>
