@@ -127,12 +127,13 @@ const STATUS_LABEL: Record<string, string> = {
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export function CalendarioAgendamentos({
-  quadraId, quadraNome, precos = {}, clienteFixo,
+  quadraId, quadraNome, precos = {}, clienteFixo, permiteAula = false,
   horaAbertura = "08:00", horaFechamento = "23:00",
   horaAberturaFds = "08:00", horaFechamentoFds = "22:00",
 }: {
   quadraId: string; quadraNome: string; precos?: Precos
   clienteFixo?: { id: string; nome: string }
+  permiteAula?: boolean
   horaAbertura?: string; horaFechamento?: string
   horaAberturaFds?: string; horaFechamentoFds?: string
 }) {
@@ -1090,12 +1091,12 @@ export function CalendarioAgendamentos({
             {!editandoId && (
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className={`grid gap-2 ${permiteAula ? "grid-cols-3" : "grid-cols-2"}`}>
                   {([
                     { value: "AVULSO",     label: "Avulso",     desc: "Dia único",  Icon: CalendarDays },
                     { value: "MENSALISTA", label: "Mensalista", desc: "Todo o mês", Icon: Repeat2      },
                     { value: "AULA",       label: "Aula",       desc: "Com alunos", Icon: Users        },
-                  ] as const).map(({ value, label, desc, Icon }) => (
+                  ] as const).filter((opcao) => permiteAula || opcao.value !== "AULA").map(({ value, label, desc, Icon }) => (
                     <button key={value} type="button" onClick={() => setForm((f) => ({ ...f, tipo: value }))}
                       className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${form.tipo === value ? "border-primary bg-primary/10 text-foreground" : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"}`}>
                       <Icon className={`w-4 h-4 ${form.tipo === value ? "text-primary" : ""}`} />

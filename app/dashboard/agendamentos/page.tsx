@@ -56,6 +56,9 @@ export default async function AgendamentosPage({
     quadraNome:  p.quadra.nome,
   }))
 
+  const tenant = tenantId ? await db.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }) : null
+  const permiteAula = tenant?.slug === "arena-brothers"
+
   const quadrasRaw = await db.$queryRaw<Array<{
     id: string; nome: string
     valor1h: string | null; valor1h30: string | null; valor2h: string | null
@@ -88,6 +91,7 @@ export default async function AgendamentosPage({
         quadraId={quadra?.id ?? ""}
         quadraNome={quadra?.nome ?? "Quadra"}
         precos={precos}
+        permiteAula={permiteAula}
         clienteFixo={clienteFixo}
         horaAbertura={quadra?.horaAbertura ?? "08:00"}
         horaFechamento={quadra?.horaFechamento ?? "23:00"}

@@ -18,6 +18,15 @@ async function verificarAdmin() {
   return session
 }
 
+const TENANT_SLUG_PERMITE_AULA = "arena-brothers"
+
+async function verificarPermiteAula(tenantId: string) {
+  const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } })
+  if (tenant?.slug !== TENANT_SLUG_PERMITE_AULA) {
+    throw new Error("Agendamento do tipo Aula não está disponível para esta arena")
+  }
+}
+
 // ── Leitura ──────────────────────────────────────────────────────────────────
 
 export type TipoAg = "AVULSO" | "MENSALISTA" | "AULA"
@@ -256,7 +265,10 @@ export async function criarAgendamentoAdmin(dados: {
   tipo:        TipoAg
   valor:       number
 }): Promise<string> {
-  await verificarAdmin()
+  const session = await verificarAdmin()
+  if (dados.tipo === "AULA") {
+    await verificarPermiteAula((session.user as any).tenantId)
+  }
 
   const horaFim   = calcFim(dados.horaInicio, dados.duracaoMin)
   const inicioStr = `${dados.data} ${dados.horaInicio}:00`
