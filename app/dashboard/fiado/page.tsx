@@ -166,7 +166,7 @@ export default function FiadoPage() {
             </span>
           </p>
         </div>
-        <Button size="sm" onClick={abrirDialogNovaConta} className="gap-2">
+        <Button onClick={abrirDialogNovaConta} className="gap-2">
           <UserPlus className="w-4 h-4" />
           Nova conta
         </Button>
