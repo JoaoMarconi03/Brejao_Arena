@@ -14,6 +14,7 @@ import {
   LogOut,
   CircleDollarSign,
   ClipboardList,
+  BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/dashboard/comandas", label: "Comandas", icon: ClipboardList, exact: false },
   { href: "/dashboard/quadras", label: "Quadras", icon: Trophy, exact: false },
   { href: "/dashboard/planos", label: "Planos Mensais", icon: Star, exact: false },
+  { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart3, exact: false },
 ]
 
 function getIniciais(nome: string) {
@@ -37,7 +39,7 @@ function getIniciais(nome: string) {
     .join("")
 }
 
-export function Sidebar({ onNavigate, tenantNome = "Gestão de Arena" }: { onNavigate?: () => void; tenantNome?: string }) {
+export function Sidebar({ onNavigate, tenantNome = "MaPlayce" }: { onNavigate?: () => void; tenantNome?: string }) {
   const pathname = usePathname()
   const iniciais = getIniciais(tenantNome)
 
