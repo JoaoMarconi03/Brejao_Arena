@@ -8,7 +8,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const session  = await auth()
   const tenantId = (session?.user as any)?.tenantId
   const tenant   = tenantId ? await db.tenant.findUnique({ where: { id: tenantId } }) : null
-  const tenantNome = tenant?.nome ?? "Gestão de Arena"
+  const tenantNome = tenant?.nome ?? "MaPlayce"
 
   return (
     <DashboardShell tenantNome={tenantNome}>

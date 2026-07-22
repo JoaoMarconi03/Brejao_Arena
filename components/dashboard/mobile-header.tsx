@@ -10,7 +10,7 @@ function getIniciais(nome: string) {
   return nome.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join("")
 }
 
-export function MobileHeader({ tenantNome = "Gestão de Arena" }: { tenantNome?: string }) {
+export function MobileHeader({ tenantNome = "MaPlayce" }: { tenantNome?: string }) {
   const [open, setOpen] = useState(false)
   const iniciais = getIniciais(tenantNome)
 

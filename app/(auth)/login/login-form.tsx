@@ -3,7 +3,8 @@
 import { useState } from "react"
 import { signIn, getSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, Trophy, ChevronRight } from "lucide-react"
+import { Eye, EyeOff, ChevronRight } from "lucide-react"
+import { LogoMark } from "@/components/logo-mark"
 
 const TEMA = {
   panelBg:    "linear-gradient(145deg, #0a0a0a 0%, #0a1628 50%, #0f1e3d 100%)",
@@ -53,7 +54,7 @@ export function LoginForm({ voltarHref }: { voltarHref?: string } = {}) {
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#ffffff" }}>
         <div className="w-full max-w-sm text-center">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-6" style={{ background: t.iconBg }}>
-            <Trophy className="w-6 h-6" style={{ color: t.iconColor }} />
+            <LogoMark className="w-6 h-6" style={{ color: t.iconColor }} />
           </div>
           <p className="text-sm mb-1" style={{ color: "#6b7280" }}>Selecione a arena para continuar</p>
           <h2 className="text-xl font-bold mb-8" style={{ color: "#0a0a0a" }}>{tenantNome}</h2>
@@ -68,7 +69,7 @@ export function LoginForm({ voltarHref }: { voltarHref?: string } = {}) {
           >
             <span className="flex items-center gap-3">
               <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#eff2ff" }}>
-                <Trophy className="w-4 h-4" style={{ color: t.iconBg }} />
+                <LogoMark className="w-4 h-4" style={{ color: t.iconBg }} />
               </span>
               <span className="font-semibold text-sm" style={{ color: "#111827" }}>{tenantNome}</span>
             </span>
@@ -114,10 +115,10 @@ export function LoginForm({ voltarHref }: { voltarHref?: string } = {}) {
           )}
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: t.iconBg }}>
-              <Trophy className="w-6 h-6" style={{ color: t.iconColor }} />
+              <LogoMark className="w-6 h-6" style={{ color: t.iconColor }} />
             </div>
             <div>
-              <span className="font-bold text-xl text-white block">Gerenciamento de Quadras</span>
+              <span className="font-bold text-xl text-white block">MaPlayce</span>
             </div>
           </div>
         </div>

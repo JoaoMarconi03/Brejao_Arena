@@ -12,7 +12,7 @@ function getIniciais(nome: string) {
 
 export function DashboardShell({
   children,
-  tenantNome = "Gestão de Arena",
+  tenantNome = "MaPlayce",
 }: {
   children: ReactNode
   tenantNome?: string
@@ -42,7 +42,7 @@ export function DashboardShell({
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden text-muted-foreground hover:text-foreground"
+            className="lg:hidden text-sidebar-foreground/70 hover:text-sidebar-foreground"
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="w-5 h-5" />
@@ -52,7 +52,7 @@ export function DashboardShell({
           <Button
             variant="ghost"
             size="icon"
-            className="hidden lg:flex text-muted-foreground hover:text-foreground"
+            className="hidden lg:flex text-sidebar-foreground/70 hover:text-sidebar-foreground"
             onClick={() => setDesktopOpen((v) => !v)}
           >
             <Menu className="w-5 h-5" />
@@ -62,7 +62,7 @@ export function DashboardShell({
             <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center shrink-0">
               <span className="text-primary-foreground font-bold text-xs">{iniciais}</span>
             </div>
-            <span className="text-foreground font-bold text-sm truncate">{tenantNome}</span>
+            <span className="text-sidebar-foreground font-bold text-sm truncate">{tenantNome}</span>
           </div>
         </header>
 

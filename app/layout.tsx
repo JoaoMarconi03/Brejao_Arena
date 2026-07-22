@@ -8,8 +8,8 @@ import { Toaster } from "@/components/ui/sonner"
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" })
 
 export const metadata: Metadata = {
-  title: "Gestão de Arenas",
-  description: "Sistema de gestão de arenas esportivas",
+  title: "MaPlayce",
+  description: "MaPlayce — sistema de gestão de arenas esportivas",
 }
 
 export default function RootLayout({
